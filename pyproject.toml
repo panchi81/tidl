@@ -1,0 +1,74 @@
+[project]
+name = "tidl"
+version = "0.1.0"
+requires-python = ">=3.13"
+
+classifiers = [
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.13",
+]
+
+dependencies = [
+  "dataclasses-json",
+  "httpx",
+  "m3u8",
+  "mutagen",
+  "python-ffmpeg",
+  "tidalapi",
+  "loguru",
+]
+
+[dependency-groups]
+dev = [
+  "prek",
+]
+
+test = [
+  "pytest",
+]
+
+lint = [
+  "deptry",
+  "pyproject-fmt",
+  "ruff",
+  "ty",
+]
+
+[tool.ruff]
+line-length = 120
+indent-width = 4
+src = [ "src", "tests" ]
+format.indent-style = "space"
+format.quote-style = "double"
+format.line-ending = "lf"
+format.skip-magic-trailing-comma = true
+lint.select = [ "ALL" ]
+lint.ignore = [
+  "ANN002", # missing type annotation for *{name}
+  "ANN003", # missing type annotation for **{name}
+  "COM812", # magic trailing commas
+  "ERA001", # commented-out code
+  "D100", # missing docstring in public module
+  "D102", # missing docstring in public method
+  "D107", # missing docstring in __init__
+]
+
+[tool.deptry]
+exclude = [
+  "__pycache__",
+  ".cache",
+  ".env",
+  ".git",
+  ".github",
+  ".venv",
+  "docs",
+]
+
+[tool.uv]
+default-groups = [ "dev", "lint", "test" ]
+
+[tool.ty.rules]
+unused-ignore-comment = "warn"
+redundant-cast = "ignore"
+possibly-unbound-attribute = "error"
+possibly-unbound-import = "error"
