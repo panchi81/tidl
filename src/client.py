@@ -13,7 +13,6 @@ from src.setup_logging import setup_logging
 
 setup_logging()
 
-
 @dataclass
 class TrackMetaData:
     """Metadata for a track."""
