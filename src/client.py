@@ -1,97 +1,15 @@
 from collections.abc import Iterator
-from dataclasses import dataclass
-from datetime import date
 from typing import ClassVar
 
 import requests
 from loguru import logger
-from tidalapi import Quality, Session, Track
-from tidalapi.media import AudioMode, Codec
+from tidalapi import Session, Track
 
 from src.exceptions import AuthError, PlaylistError
 from src.setup_logging import setup_logging
+from src.track_metadata import TrackMetaData
 
 setup_logging()
-
-@dataclass
-class TrackMetaData:
-    """Metadata for a track."""
-
-    # Required fields
-    id: int
-    name: str
-    artist: str
-    album: str
-    duration: int  # seconds
-
-    # Optional fields
-    artist_id: int | None = None
-    album_id: int | None = None
-    track_number: int | None = None
-    disc_number: int | None = None
-    release_date: date | None = None
-    release_year: int | None = None
-    genre: str | None = None
-    explicit: bool = False
-    quality: Quality | None = None
-    audio_mode: AudioMode | None = None
-    codec: Codec | None = None
-    media_metadata_tags: list[str] | None = None
-    isrc: str | None = None  # International Standard Recording Code
-    url: str | None = None  # TIDAL URL
-
-    def __post_init__(self) -> None:
-        """Extract year from release_date if available."""
-        if self.release_date and not self.release_year:
-            self.release_year = self.release_date.year
-
-    @property
-    def duration_formatted(self) -> str:
-        """Return duration as MM:SS format."""
-        minutes = self.duration // 60
-        seconds = self.duration % 60
-        return f"{minutes}:{seconds:02d}"
-
-    @property
-    def full_title(self) -> str:
-        """Return artist - title format."""
-        return f"{self.artist} - {self.name}"
-
-    @property
-    def is_hi_res(self) -> bool:
-        """Check if the track is hi-res quality."""
-        return self.quality in {Quality.high_lossless, Quality.hi_res_lossless}
-
-    @classmethod
-    def from_tidal_track(cls, track: Track) -> "TrackMetaData":
-        """Create TrackMetaData from a track object."""
-        # Map TIDAL'S quality string to tidalapi's Quality enum
-        quality_map = {
-            "LOW": Quality.low_96k,
-            "HIGH": Quality.low_320k,
-            "LOSSLESS": Quality.high_lossless,
-            "HI_RES_LOSSLESS": Quality.hi_res_lossless,
-        }
-
-        return cls(
-            id=track.id,
-            name=track.name,
-            artist=track.artist.name if track.artist else "Unknown Artist",
-            artist_id=track.artist.id if track.artist else None,
-            album=track.album.name if track.album else "Unknown Album",
-            album_id=track.album.id if track.album else None,
-            duration=track.duration or 0,
-            release_date=track.album.release_date if track.album else None,
-            release_year=getattr(track, "release_year", None),
-            genre=getattr(track, "genre", None),
-            explicit=getattr(track, "explicit", False),
-            quality=quality_map.get(getattr(track, "audio_quality", None)),
-            audio_mode=getattr(track, "audio_mode", None),
-            codec=getattr(track, "codec", None),
-            media_metadata_tags=getattr(track, "media_metadata_tags", None),
-            isrc=getattr(track, "isrc", None),
-            url=f"https://tidal.com/album/{track.album.id}/track/{track.id}" if track.album and track.id else None,
-        )
 
 
 class SingletonMeta(type):
@@ -200,7 +118,7 @@ class TidlClient(metaclass=SingletonMeta):
             playlist_name = playlist.name
             logger.info("Fetched playlist: {} with {} tracks", playlist_name, len(tracks))
 
-            return [TrackMetaData.from_tidal_track(track) for track in tracks]
+            return [TrackMetaData.from_tidal_track(track, include_stream_url=True) for track in tracks]
 
     def get_track_info(self, tracks: list[str]) -> Iterator[str]:
         """Get track information for a list of track IDs."""

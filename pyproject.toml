@@ -16,43 +16,85 @@ dependencies = [
   "python-ffmpeg",
   "tidalapi",
   "loguru",
+  "tqdm",
+  "pycryptodome",
   "python-dotenv",
 ]
 
 [dependency-groups]
-dev = ["prek"]
+dev = [
+  "prek",
+]
 
-test = ["pytest"]
+test = [
+  "pytest",
+]
 
-lint = ["deptry", "pyproject-fmt", "ruff", "ty"]
+lint = [
+  "deptry",
+  "pyproject-fmt",
+  "ruff",
+  "ty",
+]
 
 [tool.ruff]
 line-length = 120
 indent-width = 4
-src = ["src", "tests"]
+src = [ "src", "tests" ]
 format.indent-style = "space"
 format.quote-style = "double"
 format.line-ending = "lf"
 format.skip-magic-trailing-comma = true
-lint.select = ["ALL"]
+lint.select = [ "ALL" ]
 lint.ignore = [
   "ANN002", # missing type annotation for *{name}
   "ANN003", # missing type annotation for **{name}
   "COM812", # magic trailing commas
   "ERA001", # commented-out code
-  "D100",   # missing docstring in public module
-  "D102",   # missing docstring in public method
-  "D107",   # missing docstring in __init__
+  "D100", # missing docstring in public module
+  "D102", # missing docstring in public method
+  "D107", # missing docstring in __init__
+  "PLE1205", # Too many arguments for logging format string
 ]
 
 [tool.deptry]
-exclude = ["__pycache__", ".cache", ".env", ".git", ".github", ".venv", "docs"]
+exclude = [
+  "__pycache__",
+  ".cache",
+  ".env",
+  ".git",
+  ".github",
+  ".venv",
+  "docs",
+]
 
 [tool.uv]
-default-groups = ["dev", "lint", "test"]
+default-groups = [ "dev", "lint", "test" ]
 
 [tool.ty.rules]
 unused-ignore-comment = "warn"
 redundant-cast = "ignore"
 possibly-unbound-attribute = "error"
 possibly-unbound-import = "error"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "--strict-markers",
+    "--strict-config",
+    "--verbose",
+    "-ra",
+]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+    "unit: marks tests as unit tests",
+]
+filterwarnings = [
+    "error",
+    "ignore::UserWarning",
+    "ignore::DeprecationWarning",
+]

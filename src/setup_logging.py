@@ -15,7 +15,7 @@ log_format = (
     "[<green>{time:YYYY-MM-DD HH:mm:ss}</green>]"
     "[<level>{level.name[0]}</level>]"
     "[<blue>{file}</blue>:<cyan>{line}</cyan>] "
-    "<level>{message}</level>\n"
+    "<level>{message}</level>"
 )
 
 

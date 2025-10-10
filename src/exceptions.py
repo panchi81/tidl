@@ -16,3 +16,15 @@ class PlaylistError(TidlError):
 
 class TrackError(TidlError):
     """Track related errors."""
+
+
+class DownloadError(TidlError):
+    """Download related errors."""
+
+
+class StreamInfoError(TidlError):
+    """Stream information related errors."""
+
+
+class InterruptError(TidlError):
+    """Operation interrupted by user."""
