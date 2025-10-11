@@ -44,12 +44,37 @@ class TidlClient(metaclass=SingletonMeta):
         self._authenticated = False
         logger.debug("Client instance created.")
 
-    def authenticate(self) -> bool:
-        """Authenticate the session."""
+    def authenticate_oauth(self) -> bool:
+        """Authenticate the session using OAuth."""
         try:
             logger.debug("Starting OAuth authentication...")
             login_result = self.session.login_oauth_simple()
             logger.debug("OAuth authentication result: {}", login_result)
+        except (requests.RequestException, ValueError, OSError) as e:
+            logger.error("Authentication error: {}", e)
+            return False
+        else:
+            try:
+                user_check = self.session.check_login()
+            except (requests.RequestException, ValueError, OSError) as e:
+                logger.error("Session verification failed: {}", e)
+                return False
+            else:
+                if not user_check:
+                    logger.error("User check failed: {}", user_check)
+                    return False
+
+                logger.debug("Session login check result: {}", user_check)
+                self._authenticated = True
+                logger.info("Authentication successful.")
+                return True
+
+    def authenticate_device(self) -> bool:
+        """Authenticate the session using device authentication."""
+        try:
+            logger.debug("Starting device authentication...")
+            login_result = self.session.login_device()
+            logger.debug("Device authentication result: {}", login_result)
         except (requests.RequestException, ValueError, OSError) as e:
             logger.error("Authentication error: {}", e)
             return False

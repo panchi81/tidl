@@ -28,3 +28,7 @@ class StreamInfoError(TidlError):
 
 class InterruptError(TidlError):
     """Operation interrupted by user."""
+
+
+class MetadataError(TidlError):
+    """Metadata writing related errors."""

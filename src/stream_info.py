@@ -74,4 +74,4 @@ class StreamInfo:
         stream = track.get_stream()
         manifest = stream.get_stream_manifest()
 
-        return cls(stream=stream, stream_manifest=manifest)
+        return cls(stream=stream, manifest=manifest)

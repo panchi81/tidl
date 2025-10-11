@@ -58,7 +58,7 @@ class TrackService:
 
     def get_track_safe_name(self, track: Track) -> str:
         """Generate a safe filename for a track."""
-        safe_name = f"{track.artist} - {track.name}".replace("/", "_").replace("\\", "_")
+        safe_name = f"{track.artist.name} - {track.name}".replace("/", "_").replace("\\", "_")
         logger.debug("Generated safe filename: {}", safe_name)
         return safe_name
 
@@ -70,18 +70,3 @@ class TrackService:
             msg = f"Failed to get stream info for track: {track.title}"
             logger.exception(msg)
             raise StreamInfoError(msg) from e
-
-    # def get_stream_url(self, track: Track) -> str | list[str] | None:
-    #     """Get the stream URL for a track."""
-    #     try:
-    #         stream = track.get_stream()
-    #     except TrackError as e:
-    #         msg = f"Failed to get stream URL for track: {track.title}"
-    #         logger.exception(msg)
-    #         raise TrackError(msg) from e
-    #     else:
-    #         if stream:
-    #             stream_manifest = stream.get_stream_manifest()
-    #             if stream_manifest:
-    #                 urls = stream_manifest.get_urls()
-    #                 return urls[0] if len(urls) == 1 else urls

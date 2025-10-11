@@ -1,10 +1,10 @@
+import signal
 from atexit import register
 from collections.abc import Callable, Generator
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from pathlib import Path
 from random import uniform
-from signal import signal
 from tempfile import TemporaryDirectory
 from threading import Event
 from time import sleep
@@ -79,14 +79,14 @@ class Download:
                 self._cleanup()
 
         # Handle common termination signals
-        signal(signal.SIGINT, signal_handler)  # Ctrl+C
-        signal(signal.SIGTERM, signal_handler)  # Termination request
+        signal.signal(signal.SIGINT, signal_handler)  # Ctrl+C
+        signal.signal(signal.SIGTERM, signal_handler)  # Termination request
 
         # On Unix systems, also handle additional signals
         if hasattr(signal, "SIGHUP"):
-            signal(signal.SIGHUP, signal_handler)  # Terminal hangup
+            signal.signal(signal.SIGHUP, signal_handler)  # Terminal hangup
         if hasattr(signal, "SIGQUIT"):
-            signal(signal.SIGQUIT, signal_handler)  # Quit signal
+            signal.signal(signal.SIGQUIT, signal_handler)  # Quit signal
 
         # Register emergency cleanup for process exit
         register(emergency_cleanup)
@@ -386,7 +386,7 @@ class Download:
         """Download multiple tracks from a playlist."""
         self.fn_logger.info("Starting download of {} tracks", len(tracks))
 
-        results = {track.full_title: self.download_track(track) for track in tqdm(tracks, desc="Downloading playlist")}
+        results = {track.full_name: self.download_track(track) for track in tqdm(tracks, desc="Downloading playlist")}
         successful = sum(results.values())
         self.fn_logger.info("Downloaded {}/{} tracks successfully", successful, len(tracks))
 
