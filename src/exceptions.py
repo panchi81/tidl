@@ -32,3 +32,7 @@ class InterruptError(TidlError):
 
 class MetadataError(TidlError):
     """Metadata writing related errors."""
+
+
+class CoverImageError(TidlError):
+    """Cover image related errors."""

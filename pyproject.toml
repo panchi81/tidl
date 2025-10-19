@@ -19,6 +19,8 @@ dependencies = [
   "tqdm",
   "pycryptodome",
   "python-dotenv",
+  "spotipy",
+  "aiofiles",
 ]
 
 [dependency-groups]

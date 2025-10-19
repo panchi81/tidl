@@ -3,9 +3,9 @@ from typing import ClassVar
 
 import requests
 from loguru import logger
-from tidalapi import Session, Track
+from tidalapi import Quality, Session, Track
 
-from src.exceptions import AuthError, PlaylistError
+from src.exceptions import AuthError, PlaylistError, StreamInfoError
 from src.setup_logging import setup_logging
 from src.track_metadata import TrackMetaData
 
@@ -66,17 +66,19 @@ class TidlClient(metaclass=SingletonMeta):
 
                 logger.debug("Session login check result: {}", user_check)
                 self._authenticated = True
+                # Set highest quality with fallback for lossless downloads
+                self._set_highest_available_quality()
                 logger.info("Authentication successful.")
                 return True
 
-    def authenticate_device(self) -> bool:
-        """Authenticate the session using device authentication."""
+    def authenticate_pkce(self) -> bool:
+        """Authenticate the session using PKCE method for HiRes/lossless access."""
         try:
-            logger.debug("Starting device authentication...")
-            login_result = self.session.login_device()
-            logger.debug("Device authentication result: {}", login_result)
+            logger.debug("Starting PKCE authentication for HiRes access...")
+            self.session.login_pkce()
+            logger.debug("PKCE authentication completed")
         except (requests.RequestException, ValueError, OSError) as e:
-            logger.error("Authentication error: {}", e)
+            logger.error("PKCE authentication error: {}", e)
             return False
         else:
             try:
@@ -91,8 +93,63 @@ class TidlClient(metaclass=SingletonMeta):
 
                 logger.debug("Session login check result: {}", user_check)
                 self._authenticated = True
-                logger.info("Authentication successful.")
+                # Set highest quality with fallback for lossless downloads
+                self._set_highest_available_quality()
+                logger.info("PKCE authentication successful - HiRes access enabled.")
                 return True
+
+    def _set_highest_available_quality(self) -> None:
+        """Set the highest available audio quality.
+
+        Attempts qualities in order from highest to lowest:
+        1. HI_RES_LOSSLESS (24-bit up to 192kHz FLAC)
+        2. LOSSLESS (16-bit 44.1kHz FLAC)
+        3. HIGH (320kbps AAC)
+        4. LOW (96kbps AAC)
+        """
+        quality_preferences = [Quality.hi_res_lossless, Quality.high_lossless, Quality.low_320k, Quality.low_96k]
+
+        for quality in quality_preferences:
+            try:
+                self.session.audio_quality = quality
+            except (AttributeError, ValueError):
+                logger.debug("Quality {} not available", quality.name)
+                continue
+            else:
+                logger.debug("Session quality set to: {}", quality.name)
+                return
+
+        # Fallback to default if all fail
+        self.session.audio_quality = Quality.low_320k
+        logger.warning("Using fallback quality: {}", Quality.low_320k.name)
+
+    def get_track_with_quality(self, track: Track) -> tuple[Track, Quality]:
+        """Get track stream with quality.
+
+        Tries to get the highest quality stream available for the specific track.
+        Returns the track and the actual quality obtained.
+        """
+        quality_preferences = [Quality.hi_res_lossless, Quality.high_lossless, Quality.low_320k, Quality.low_96k]
+
+        original_quality = self.session.audio_quality
+
+        for quality in quality_preferences:
+            try:
+                self.session.audio_quality = quality
+                stream = track.get_stream()
+                if stream:
+                    logger.debug("Track {} available in quality: {}", track.name, quality.name)
+                    return track, quality
+            except (requests.RequestException, ValueError, OSError):
+                logger.debug("Track {} not available in {}", track.name, quality.name)
+                continue
+
+        # Restore original quality setting
+        self.session.audio_quality = original_quality
+
+        # If no quality worked, raise an exception
+        msg = f"Track {track.name} not available in any quality"
+        raise StreamInfoError(msg)
 
     def is_authenticated(self) -> bool:
         """Check if the session is authenticated."""
@@ -143,7 +200,7 @@ class TidlClient(metaclass=SingletonMeta):
             playlist_name = playlist.name
             logger.info("Fetched playlist: {} with {} tracks", playlist_name, len(tracks))
 
-            return [TrackMetaData.from_tidal_track(track, include_stream_url=True) for track in tracks]
+            return [TrackMetaData.from_track(track) for track in tracks]
 
     def get_track_info(self, tracks: list[str]) -> Iterator[str]:
         """Get track information for a list of track IDs."""

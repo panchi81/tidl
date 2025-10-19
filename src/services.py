@@ -1,10 +1,19 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from loguru import logger
-from tidalapi import Session
-from tidalapi.media import Track
-from tidalapi.playlist import Playlist
+from tidalapi.media import Quality
 
 from src.exceptions import PlaylistError, StreamInfoError, TrackError
 from src.stream_info import StreamInfo
+
+if TYPE_CHECKING:
+    from tidalapi import Session
+    from tidalapi.media import Track
+    from tidalapi.playlist import Playlist
+
+    from src.client import TidlClient
 
 
 class PlaylistService:
@@ -62,11 +71,19 @@ class TrackService:
         logger.debug("Generated safe filename: {}", safe_name)
         return safe_name
 
-    def get_stream_info(self, track: Track) -> StreamInfo:
+    def get_stream_info(self, track: Track, client: TidlClient) -> StreamInfo:
         """Get stream information for a track."""
-        try:
-            return StreamInfo.from_track(track)
-        except StreamInfoError as e:
-            msg = f"Failed to get stream info for track: {track.title}"
-            logger.exception(msg)
-            raise StreamInfoError(msg) from e
+        # Try qualities from highest to lowest
+        qualities = [Quality.hi_res_lossless, Quality.high_lossless, Quality.low_320k, Quality.low_96k]
+        for quality in qualities:
+            try:
+                client.session.audio_quality = quality
+                stream_info = StreamInfo.from_track(track)
+            except StreamInfoError:
+                continue
+            else:
+                logger.info("Track {} obtained in quality: {}", track.name, quality)
+                return stream_info
+        msg = f"Failed to get stream info for track: {track.name} in any quality"
+        logger.exception(msg)
+        raise StreamInfoError(msg)

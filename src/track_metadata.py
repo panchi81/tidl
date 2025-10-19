@@ -1,16 +1,21 @@
 from dataclasses import dataclass
 from pathlib import Path
 
+import httpx
 import mutagen
 import mutagen.flac
 import mutagen.mp3
 import mutagen.mp4
 from loguru import logger
-from mutagen.id3 import TALB, TDRC, TIT2, TLEN, TPE1, TSRC
+from mutagen.flac import Picture
+from mutagen.id3 import APIC, TALB, TDRC, TIT2, TLEN, TPE1, TSRC, TYER
+from mutagen.mp4 import MP4Cover
 from tidalapi import Track
 from tidalapi.artist import Artist, Role
 
-from src.exceptions import MetadataError
+from src.exceptions import CoverImageError
+
+MAX_COVER_IMAGE_SIZE = 3000
 
 
 @dataclass
@@ -25,6 +30,7 @@ class TrackMetaData:
 
     # Basic track info
     date: str = ""
+    year: str = ""
     length: int = 0
     # genre: str = ""
 
@@ -44,8 +50,7 @@ class TrackMetaData:
     # replay_gain_write: bool = False
 
     # File related data
-    # path_cover: str = ""
-    # cover_data: bytes = b""
+    cover: bytes = b""
     # m: mutagen.mp4.MP4 | mutagen.flac.FLAC
     # media_tags: list[str]
 
@@ -63,6 +68,9 @@ class TrackMetaData:
 
     @classmethod
     def from_track(cls, track: Track) -> "TrackMetaData":
+        """Create TrackMetaData."""
+        cover_data = cls._download_cover_image(track)
+
         return cls(
             title=track.name if track.name else "",
             artists=cls._name_builder_artists(track),
@@ -73,12 +81,52 @@ class TrackMetaData:
             if track.album and track.album.available_release_date
             else "",
             year=track.album.year if track.album and track.album.year else "",
-            bpm=getattr(track, "bpm", 0),
+            cover=cover_data,
             # from https://docs.mp3tag.de/mapping/ :
+            # BPM
             # Description
             # Genre
             # Initialkey
         )
+
+    @classmethod
+    def _download_cover_image(cls, track: Track) -> bytes:
+        """Download cover image.
+
+        Tries to download in this order:
+        1. 1280x1280
+        2. 640x640
+        3. 320x320
+
+        Args:
+            track: Track object
+
+        Returns:
+            bytes: Image data, or empty bytes if download fails
+
+        """
+        if not track.album:
+            logger.debug("No album available for cover image")
+            return b""
+
+        quality_preferences = [1280, 640, 320]
+        for quality in quality_preferences:
+            try:
+                cover_url = track.album.image(quality)
+                logger.debug("Attempting to download cover: {} ({}px)", cover_url, quality)
+                with httpx.Client(timeout=30.0) as client:
+                    response = client.get(cover_url)
+                    response.raise_for_status()
+                    if response.headers.get("content-type", "").startswith("image/"):
+                        image_data = response.content
+                        logger.debug("Successfully downloaded cover image: {} bytes ({}px)", len(image_data), quality)
+                        return image_data
+                    logger.warning("Invalid image content type: {}", response.headers.get("content-type"))
+            except Exception as e:
+                logger.warning("Error downloading cover at {} quality: {}", quality, str(e))
+                continue
+        logger.warning("Failed to download cover image for track: {}", track.name)
+        return b""
 
     @classmethod
     def _name_builder_artists(cls, track: Track) -> str:
@@ -98,53 +146,108 @@ class MetadataWriter:
 
     def __init__(self, path_file: Path) -> None:
         self.path_file = path_file
-        self.m = mutagen.File(path_file)  # ✅ Use mutagen.File() correctly
+        self.m = self._load_file_with_format_detection()
+
+    def _load_file_with_format_detection(self) -> mutagen.FileType | None:
+        """Load file with custom format detection for TIDAL DASH streams."""
+        file_ext = self.path_file.suffix.lower()
+
+        try:
+            # Special handling for .flac files that might be MP4 containers
+            if file_ext == ".flac":
+                # Check file header to determine actual format
+                with Path(self.path_file).open("rb") as f:
+                    header = f.read(16)
+                    if b"ftyp" in header:
+                        # This is an MP4 file with .flac extension (TIDAL DASH)
+                        logger.debug("Detected MP4 container with .flac extension")
+                        return mutagen.mp4.MP4(str(self.path_file))
+                    if header.startswith(b"fLaC"):
+                        # This is a real FLAC file
+                        logger.debug("Detected actual FLAC file")
+                        return mutagen.flac.FLAC(str(self.path_file))
+                    # Try generic FLAC loading
+                    logger.debug("Attempting FLAC loading for .flac file")
+                    return mutagen.flac.FLAC(str(self.path_file))
+            else:
+                # For non-.flac files, use standard mutagen detection
+                logger.debug("Using standard mutagen detection for {}", file_ext)
+                return mutagen.File(str(self.path_file))
+
+        except Exception as e:
+            logger.error("Failed to load file {}: {}", self.path_file, e)
+            return None
 
     def write_metadata(self, track_metadata: TrackMetaData) -> bool:
         """Write metadata to the audio file."""
-        if not self.m:
+        logger.debug("write_metadata called, self.m type: {}, self.m is None: {}", type(self.m), self.m is None)
+        if self.m is None:
             logger.error("Could not load file: {}", self.path_file)
             return False
 
-        if not self.m.tags:
-            self.m.add_tags()
-
-        if isinstance(self.m, mutagen.flac.FLAC):
-            self._write_flac_tags(track_metadata)
-        elif isinstance(self.m, mutagen.mp4.MP4):
-            self._write_mp4_tags(track_metadata)
-        elif isinstance(self.m, mutagen.mp3.MP3):
-            self._write_mp3_tags(track_metadata)
-        else:
-            logger.warning("Unsupported file type for metadata writing: {}", self.path_file.suffix)
-            return False
-
         try:
+            # Add tags if they don't exist
+            if not self.m.tags:
+                logger.debug("Adding tags to file")
+                self.m.add_tags()
+
+            # Write metadata based on detected format (like tidal_dl_ng does)
+            if isinstance(self.m, mutagen.flac.FLAC):
+                logger.debug("Writing FLAC tags")
+                self._write_flac_tags(track_metadata)
+            elif isinstance(self.m, mutagen.mp4.MP4):
+                self._write_mp4_tags(track_metadata)
+            elif isinstance(self.m, mutagen.mp3.MP3):
+                self._write_mp3_tags(track_metadata)
+            else:
+                logger.warning("Unsupported file format: {}", type(self.m))
+                return False
+
+            # Add cover image if available
+            if track_metadata.cover:
+                self._add_cover_image(track_metadata.cover)
+
             self.m.save()
-        except MetadataError:
-            logger.error("Failed to save metadata to {}: {}", self.path_file)
-            return False
-        else:
-            logger.info("Metadata written to file: {}", self.path_file)
+            logger.debug("Successfully wrote metadata to: {}", self.path_file.name)
             return True
+
+        except Exception as e:
+            logger.error("Failed to write metadata to {}: {}", self.path_file.name, e)
+            return False
 
     def _write_flac_tags(self, track_metadata: TrackMetaData) -> None:
         """Write FLAC tags."""
         self.m.tags["TITLE"] = track_metadata.title
         self.m.tags["ALBUM"] = track_metadata.album
         self.m.tags["ARTIST"] = track_metadata.artists
-        self.m.tags["LENGTH"] = track_metadata.length
+        self.m.tags["LENGTH"] = str(track_metadata.length)
         self.m.tags["DATE"] = track_metadata.date
-        self.m.tags["ISRC"] = track_metadata.isrc
+        self.m.tags["YEAR"] = str(track_metadata.year)
+        if track_metadata.isrc:
+            self.m.tags["ISRC"] = track_metadata.isrc
 
     def _write_mp4_tags(self, track_metadata: TrackMetaData) -> None:
         """Write MP4 tags."""
-        self.m.tags["\xa9nam"] = track_metadata.title
-        self.m.tags["\xa9alb"] = track_metadata.album
-        self.m.tags["\xa9ART"] = track_metadata.artists
-        self.m.tags["\xa9len"] = track_metadata.length
-        self.m.tags["\xa9day"] = track_metadata.date
-        self.m.tags["isrc"] = track_metadata.isrc
+        try:
+            # Ensure tags exist
+            if not self.m.tags:
+                self.m.add_tags()
+
+            # Write basic metadata (MP4 tags expect lists)
+            self.m.tags["\xa9nam"] = [track_metadata.title]
+            self.m.tags["\xa9alb"] = [track_metadata.album]
+            self.m.tags["\xa9ART"] = [track_metadata.artists]
+            self.m.tags["\xa9day"] = [track_metadata.date]
+            self.m.tags["\xa9yr"] = [str(track_metadata.year)]
+
+            if track_metadata.isrc:
+                self.m.tags["isrc"] = [track_metadata.isrc]
+
+            logger.debug("MP4 tags written successfully")
+
+        except Exception as e:
+            logger.error("Error writing MP4 tags: {}", str(e))
+            raise
 
     def _write_mp3_tags(self, track_metadata: TrackMetaData) -> None:
         """Write MP3 tags."""
@@ -153,9 +256,107 @@ class MetadataWriter:
         self.m.tags.add(TIT2(encoding=3, text=track_metadata.title))
         self.m.tags.add(TALB(encoding=3, text=track_metadata.album))
         self.m.tags.add(TPE1(encoding=3, text=track_metadata.artists))
-        self.m.tags.add(TLEN(encoding=3, text=track_metadata.length * 1000))
+        self.m.tags.add(TLEN(encoding=3, text=str(track_metadata.length * 1000)))
         self.m.tags.add(TDRC(encoding=3, text=track_metadata.date))
-        self.m.tags.add(TSRC(encoding=3, text=track_metadata.isrc))
+        self.m.tags.add(TYER(encoding=3, text=str(track_metadata.year)))
+        if track_metadata.isrc:
+            self.m.tags.add(TSRC(encoding=3, text=track_metadata.isrc))
+
+    def _add_cover_image(self, image_data: bytes) -> None:
+        """Add cover image to file based on format (like tidal_dl_ng does)."""
+        if isinstance(self.m, mutagen.flac.FLAC):
+            self._add_flac_cover(image_data)
+        elif isinstance(self.m, mutagen.mp4.MP4):
+            self._add_mp4_cover(image_data)
+        elif isinstance(self.m, mutagen.mp3.MP3):
+            self._add_mp3_cover(image_data)
+
+    def _add_flac_cover(self, image_data: bytes) -> None:
+        """Add cover image to FLAC file."""
+        try:
+            # Detect image format from binary data
+            mime_type = self._detect_image_mime_type(image_data)
+
+            # Create Picture block
+            picture = Picture()
+            picture.data = image_data
+            picture.type = 3  # Cover (front)
+            picture.mime = mime_type
+            picture.width = 0  # Let mutagen figure out dimensions
+            picture.height = 0
+            picture.depth = 0  # Color depth
+            picture.colors = 0  # Number of colors
+            picture.desc = "Cover"
+
+            # Add picture to FLAC file
+            self.m.add_picture(picture)
+            logger.debug("Added cover image to FLAC file: {} bytes", len(image_data))
+
+        except CoverImageError as e:
+            logger.warning("Failed to add cover to FLAC file: {}", str(e))
+
+    def _add_mp4_cover(self, image_data: bytes) -> None:
+        """Add cover image to MP4 file."""
+        try:
+            # Detect format and create appropriate MP4Cover
+            if image_data.startswith(b"\xff\xd8"):  # JPEG signature
+                cover_format = MP4Cover.FORMAT_JPEG
+            elif image_data.startswith(b"\x89PNG"):  # PNG signature
+                cover_format = MP4Cover.FORMAT_PNG
+            else:
+                # Default to JPEG for unknown formats
+                cover_format = MP4Cover.FORMAT_JPEG
+                logger.debug("Unknown image format, defaulting to JPEG")
+
+            # Create MP4Cover object
+            cover = MP4Cover(image_data, imageformat=cover_format)
+
+            # Add to MP4 tags (ensure it's a list)
+            self.m.tags["covr"] = [cover]
+            logger.debug("Added cover image to MP4 file: {} bytes", len(image_data))
+
+        except Exception as e:
+            logger.warning("Failed to add cover to MP4 file: {}", str(e))
+            raise
+
+    def _add_mp3_cover(self, image_data: bytes) -> None:
+        """Add cover image to MP3 file."""
+        try:
+            # Detect MIME type
+            mime_type = self._detect_image_mime_type(image_data)
+
+            # Create APIC frame (Attached Picture)
+            cover_frame = APIC(
+                encoding=3,  # UTF-8
+                mime=mime_type,
+                type=3,  # Cover (front)
+                desc="Cover",
+                data=image_data,
+            )
+
+            # Add to ID3 tags
+            self.m.tags.add(cover_frame)
+            logger.debug("Added cover image to MP3 file: {} bytes", len(image_data))
+
+        except CoverImageError as e:
+            logger.warning("Failed to add cover to MP3 file: {}", str(e))
+
+    def _detect_image_mime_type(self, image_data: bytes) -> str:
+        """Detect MIME type from image binary data."""
+        if image_data.startswith(b"\xff\xd8"):
+            return "image/jpeg"
+        if image_data.startswith(b"\x89PNG"):
+            return "image/png"
+        if image_data.startswith(b"GIF"):
+            return "image/gif"
+        if image_data.startswith(b"\x00\x00\x01\x00"):  # ICO format
+            return "image/x-icon"
+        if image_data.startswith(b"RIFF") and b"WEBP" in image_data[:12]:
+            return "image/webp"
+
+        # Default to JPEG for unknown formats
+        logger.debug("Unknown image format, defaulting to image/jpeg")
+        return "image/jpeg"
 
     def cleanup_tags(self) -> None:
         """Clean up any temporary tags or data."""
