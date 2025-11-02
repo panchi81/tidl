@@ -7,7 +7,7 @@ from shutil import move
 from subprocess import run as subprocess_run
 from tempfile import TemporaryDirectory
 
-import aiofiles
+from aiofiles import open as aio_open
 from ffmpeg import FFmpeg
 from httpx import AsyncClient, Client, HTTPError, Limits
 from loguru import logger
@@ -58,7 +58,7 @@ class Download:
         tasks = [self.process_track(track) for track in tracks]
         result_list = await gather(*tasks, return_exceptions=True)
         results = {track.full_name: result for track, result in zip(tracks, result_list, strict=False)}
-        progress = sum(1 for v in results.values() if v is True)
+        progress = sum(v is True for v in results.values())
         self.fn_logger.info("Downloaded {}/{} tracks successfully", progress, len(tracks))
         return results
 
@@ -193,7 +193,7 @@ class Download:
                 response = await client.get(url, timeout=30.0)
                 response.raise_for_status()
 
-                async with aiofiles.open(filepath, "wb") as f:
+                async with aio_open(filepath, "wb") as f:
                     async for chunk in response.aiter_bytes(chunk_size=8192):
                         await f.write(chunk)
 
@@ -283,7 +283,7 @@ class Download:
             if temp_file.exists():
                 return temp_file
             self.fn_logger.error("File missing {}", temp_file)
-            return None
+            return None  # noqa: TRY300
 
         except Exception:
             self.fn_logger.exception("Post-processing failed for {}", track.full_name)
@@ -302,7 +302,7 @@ class Download:
                 "json",
                 str(file_path),
             ]
-            result = subprocess_run(probe_cmd, capture_output=True, text=True, timeout=10, check=False)
+            result = subprocess_run(probe_cmd, capture_output=True, text=True, timeout=10, check=False)  # noqa: S603
             if result.returncode == 0:
                 info = json_loads(result.stdout)
                 codec = info["streams"][0]["codec_name"] if info.get("streams") else ""

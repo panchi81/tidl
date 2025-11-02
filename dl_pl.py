@@ -29,7 +29,7 @@ def authenticate_client() -> TidlClient:
 
 def display_results(results: dict[str, bool]) -> None:
     """Display download results."""
-    successful = sum(1 for v in results.values() if v is True)
+    successful = sum(v is True for v in results.values())
     total = len(results)
 
     logger.info("📊 Download Summary:")
