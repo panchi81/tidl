@@ -1,4 +1,5 @@
 from asyncio import run
+from contextlib import suppress
 from os import getenv
 from sys import exit as sys_exit
 
@@ -42,20 +43,43 @@ def display_results(results: dict[str, bool]) -> None:
     else:
         logger.warning("⚠️ No tracks were downloaded successfully.")
 
+def probe_entry_type(client: TidlClient, entry_id: str) -> str | None:
+    """Determine if the entry ID is a track or playlist."""
+    session = client.session
+    http_response_ok = 200
+
+    with suppress(Exception):
+        resp = session.request.request("GET", f"/tracks/{entry_id}")
+        if getattr(resp, "status_code", None) == http_response_ok or getattr(resp, "ok", False):
+            return "track"
+
+    with suppress(Exception):
+        resp = session.request.request("GET", f"/playlists/{entry_id}")
+        if getattr(resp, "status_code", None) == http_response_ok or getattr(resp, "ok", False):
+            return "playlist"
+
+    return None
 
 def main() -> None:
     """Run the downloader."""
-    playlist_id = getenv("PLAYLIST_ID")
-    if not playlist_id:
+    entry_id = getenv("SINGLE_TRACK_PLAYLIST_ID")
+    if not entry_id:
         logger.error("No playlist ID provided. Exiting.")
         return
 
     client = authenticate_client()
+    if not (entry_type := probe_entry_type(client, entry_id)):
+        logger.error("❌ Could not determine entry type for ID: {}", entry_id)
+        sys_exit(1)
+
     track_service = TrackService(client.session)
     downloader = Download(track_service, client)
 
+    if entry_type == "track":
+        logger.info("📥 Deteced a track id - processing trach {}", entry_id)
+
     logger.info("📥 Processing...")
-    results = run(downloader.orchestrate_download(playlist_id))
+    results = run(downloader.orchestrate_download(entry_id))
     display_results(results)
 
 
