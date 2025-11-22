@@ -1,5 +1,6 @@
 from asyncio import run
 from os import getenv
+from pathlib import Path
 from sys import exit as sys_exit
 
 from dotenv import load_dotenv
@@ -52,7 +53,16 @@ def main() -> None:
 
     client = authenticate_client()
     track_service = TrackService(client.session)
-    downloader = Download(track_service, client)
+    downloader = Download(
+        track_service=track_service,
+        client=client,
+        download_dir=Path("./downloads"),
+        skip_existing=True,
+        batch_size=4,
+        concurrent_downloads=2,
+        batch_delay=4,
+        api_delay=0.5,
+    )
 
     logger.info("📥 Processing...")
     results = run(downloader.orchestrate_download(playlist_id))

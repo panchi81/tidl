@@ -36,3 +36,7 @@ class MetadataError(TidlError):
 
 class CoverImageError(TidlError):
     """Cover image related errors."""
+
+
+class DBError(Exception):
+    """Database related errors."""

@@ -1,4 +1,5 @@
-from asyncio import gather
+from asyncio import Lock, Semaphore, gather
+from asyncio import sleep as async_sleep
 from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from json import loads as json_loads
@@ -6,6 +7,7 @@ from pathlib import Path
 from shutil import move
 from subprocess import run as subprocess_run
 from tempfile import TemporaryDirectory
+from time import time
 
 from aiofiles import open as aio_open
 from ffmpeg import FFmpeg
@@ -14,6 +16,7 @@ from loguru import logger
 from tidalapi.media import AudioExtensions, Track
 
 from src.client import TidlClient
+from src.db import DownloadDB
 from src.decryption import decrypt_file, decrypt_security_token
 from src.exceptions import StreamInfoError
 from src.services import PlaylistService, TrackService
@@ -21,10 +24,32 @@ from src.stream_info import StreamInfo
 from src.track_metadata import MetadataWriter, TrackMetaData
 
 
-class Download:
-    """Manage Downloads."""
+class RateLimiter:
+    """Simple rate limiter to space out API calls."""
 
-    def __init__(
+    def __init__(self, min_interval: float = 0.5) -> None:
+        """Initialize rate limiter.
+
+        Args:
+            min_interval: Minimum seconds between calls
+
+        """
+        self.min_interval = min_interval
+        self.last_call = 0.0
+
+    async def wait(self) -> None:
+        """Wait if needed to respect rate limit."""
+        now = time()
+        elapsed = now - self.last_call
+        if elapsed < self.min_interval:
+            await async_sleep(self.min_interval - elapsed)
+        self.last_call = time()
+
+
+class Download:
+    """Manage Downloads with batch processing and rate limiting."""
+
+    def __init__(  # noqa: PLR0913
         self,
         track_service: TrackService,
         client: TidlClient,
@@ -32,15 +57,25 @@ class Download:
         fn_logger: Callable = logger,
         *,
         skip_existing: bool = False,
+        skip_db: bool = False,
+        batch_size: int = 20,
+        concurrent_downloads: int = 5,
+        batch_delay: float = 15.0,
+        api_delay: float = 0.5,
     ) -> None:
         """Initialize Download manager.
 
         Args:
-            track_service (TrackService): Service to handle track operations.
-            client (TidlClient): Authenticated TIDL client.
-            download_dir (Path): Directory to save downloaded tracks.
-            fn_logger (Callable): Logger function or object.
-            skip_existing (bool): Whether to skip existing downloads.
+            track_service: Service to handle track operations.
+            client: Authenticated TIDL client.
+            download_dir: Directory to save downloaded tracks.
+            fn_logger: Logger function or object.
+            skip_existing: Whether to skip existing files on disk.
+            skip_db: Whether to skip database operations.
+            batch_size: Number of tracks to process per batch.
+            concurrent_downloads: Max concurrent downloads within a batch.
+            batch_delay: Seconds to wait between batches.
+            api_delay: Minimum seconds between API calls.
 
         """
         self.track_service = track_service
@@ -48,19 +83,73 @@ class Download:
         self.download_dir = download_dir
         self.fn_logger = fn_logger
         self.skip_existing = skip_existing
-        self.httpx_client = Client(timeout=30.0, limits=Limits(max_connections=10, max_keepalive_connections=5))
+        self.skip_db = skip_db
+
+        # Batch processing configuration
+        self.batch_size = batch_size
+        self.concurrent_downloads = concurrent_downloads
+        self.batch_delay = batch_delay
+
+        # Rate limiting
+        self.rate_limiter = RateLimiter(min_interval=api_delay)
+        self.api_lock = Lock()  # Serialize API calls to prevent bursts
+
+        # Database integration
+        if not skip_db:
+            self.db = DownloadDB()
+            self.fn_logger.info("Database integration enabled")
+
+        # HTTP client with optimized connection pooling
+        self.httpx_client = Client(
+            timeout=30.0,
+            limits=Limits(max_connections=concurrent_downloads * 2, max_keepalive_connections=concurrent_downloads),
+        )
+
+        # Stream info cache (for retries within same session)
+        self._stream_cache: dict[str, StreamInfo] = {}
 
     async def orchestrate_download(self, playlist_id: str) -> dict[str, bool]:
-        """Manage download process."""
+        """Manage download process with batching."""
         playlist_name, tracks = self.resolve_tracks_from_playlist(playlist_id)
-        self.fn_logger.info("Preparing to download {} tracks", len(tracks))
+        self.fn_logger.info("Preparing to download {} tracks in batches of {}", len(tracks), self.batch_size)
         self.download_dir = self.download_dir / playlist_name
-        tasks = [self.process_track(track) for track in tracks]
-        result_list = await gather(*tasks, return_exceptions=True)
-        results = {track.full_name: result for track, result in zip(tracks, result_list, strict=False)}
+
+        results: dict[str, bool] = {}
+        total_batches = (len(tracks) + self.batch_size - 1) // self.batch_size
+
+        # Process tracks in batches
+        for batch_num in range(total_batches):
+            start_idx = batch_num * self.batch_size
+            end_idx = min(start_idx + self.batch_size, len(tracks))
+            batch = tracks[start_idx:end_idx]
+
+            self.fn_logger.info("Processing batch {}/{} ({} tracks)", batch_num + 1, total_batches, len(batch))
+
+            # Process batch with concurrency limit
+            batch_results = await self._process_batch(batch)
+            results.update(batch_results)
+
+            # Delay between batches (except after last batch)
+            if batch_num < total_batches - 1:
+                self.fn_logger.info("Waiting {} seconds before next batch...", self.batch_delay)
+                await async_sleep(self.batch_delay)
+
         progress = sum(v is True for v in results.values())
         self.fn_logger.info("Downloaded {}/{} tracks successfully", progress, len(tracks))
         return results
+
+    async def _process_batch(self, tracks: list[Track]) -> dict[str, bool]:
+        """Process a batch of tracks with concurrency control."""
+        semaphore = Semaphore(self.concurrent_downloads)
+
+        async def process_with_semaphore(track: Track) -> tuple[str, bool]:
+            async with semaphore:
+                result = await self.process_track(track)
+                return track.full_name, result
+
+        results_list = await gather(*(process_with_semaphore(track) for track in tracks), return_exceptions=True)
+
+        return {name: result if isinstance(result, bool) else False for name, result in results_list}
 
     def resolve_tracks_from_playlist(self, playlist_id: str) -> tuple[str, list[Track]]:
         """Fetch tracks from a playlist by ID."""
@@ -70,33 +159,103 @@ class Download:
         self.fn_logger.info("Found playlist: {} with {} tracks", playlist.name, playlist.get_tracks_count())
         return playlist.name, tracks
 
-    async def process_track(self, track: Track) -> bool:
+    async def process_track(self, track: Track) -> bool:  # noqa: C901
         """Process track data."""
         # Validation
         if not self._validate_track(track):
             return False
 
-        try:
-            stream_info = self.track_service.get_stream_info(track, self.tdl_client)
-        except StreamInfoError:
-            self.fn_logger.exception("Failed to get stream info for track: {}", track.full_name)
-            return False
+        # Serialize API calls to prevent concurrent bursts
+        async with self.api_lock:
+            await self.rate_limiter.wait()
+            # Get stream info (with caching)
+            try:
+                stream_info = self._get_cached_stream_info(track)
+            except StreamInfoError:
+                self.fn_logger.exception("Failed to get stream info for track: {}", track.full_name)
+                return False
 
-        # Check if exists
+        # Check database for quality upgrades (if enabled)
+        if not self.skip_db and self.db.is_track_downloaded(track):
+            # Check if new quality is better (use .name to get enum name like "high_lossless")
+            new_quality_str = stream_info.quality.name
+            existing_quality = self.db.get_best_quality_downloaded(track)
+
+            # Debug logging
+            self.fn_logger.debug(
+                "Quality check for {}: existing='{}' new='{}' upgrade={}",
+                track.full_name,
+                existing_quality,
+                new_quality_str,
+                self.db.should_upgrade_quality(track, new_quality_str),
+            )
+
+            if not self.db.should_upgrade_quality(track, new_quality_str):
+                self.fn_logger.info("Skipping (DB) already-downloaded track: {}", track.full_name)
+                return True
+            # Quality upgrade available
+            self.fn_logger.info(
+                "Quality upgrade available for {}: {} -> {}", track.full_name, existing_quality, new_quality_str
+            )
+            # Continue with download to upgrade
+
+        # Check if exists on disk
         safe_name = self.track_service.get_track_safe_name(track)
         final_path, should_skip = self._check_if_exists(safe_name, stream_info.file_extension_atm)
 
         if should_skip:
             self.fn_logger.info("Skipping existing file: {}", final_path.name)
+
+            # Add to database if not already there
+            if not self.skip_db and not self.db.is_track_downloaded(track):
+                try:
+                    file_size = final_path.stat().st_size if final_path.exists() else None
+                    self.db.mark_track_downloaded(
+                        track=track,
+                        file_path=str(final_path),
+                        file_size=file_size,
+                        quality=stream_info.quality.name,
+                        has_metadata=True,
+                    )
+                    self.fn_logger.debug("Added existing file to database: {}", final_path.name)
+                except Exception:
+                    self.fn_logger.exception("Failed to add existing file to DB: {}", track.full_name)
+
             return True
 
         # Download
         try:
             with self.download_workspace(track.name) as workspace:
-                return await self._process_download(stream_info, track, workspace, final_path)
+                success = await self._process_download(stream_info, track, workspace, final_path)
+
+                # Record in database
+                if success and not self.skip_db:
+                    try:
+                        file_size = final_path.stat().st_size if final_path.exists() else None
+                        self.db.mark_track_downloaded(
+                            track=track,
+                            file_path=str(final_path),
+                            file_size=file_size,
+                            quality=stream_info.quality.name,
+                            has_metadata=True,
+                        )
+                    except Exception:
+                        self.fn_logger.exception("Failed to mark track as downloaded in DB: {}", track.full_name)
+
+                return success
+
         except Exception:
             self.fn_logger.exception("Failed to download track: {}", track.full_name)
             return False
+
+    def _get_cached_stream_info(self, track: Track) -> StreamInfo:
+        """Get stream info with caching to avoid redundant API calls."""
+        cache_key = str(track.id)
+
+        if cache_key not in self._stream_cache:
+            self._stream_cache[cache_key] = self.track_service.get_stream_info(track, self.tdl_client)
+
+        return self._stream_cache[cache_key]
 
     def _validate_track(self, track: Track) -> bool:
         """Validate track before download."""
@@ -209,8 +368,31 @@ class Download:
                     filepath.unlink()
                 return None
             else:
-                self.fn_logger.debug("Successfully downloaded: {}", description)
                 return filepath
+
+    def _download_stream(self, url: str, filepath: Path, description: str) -> Path | None:
+        """Download file synchronously (fallback)."""
+        try:
+            response = self.httpx_client.get(url)
+            response.raise_for_status()
+
+            with filepath.open("wb") as f:
+                f.write(response.content)
+
+        except HTTPError:
+            self.fn_logger.exception("Failed to download {}", description)
+            if filepath.exists():
+                filepath.unlink()
+            return None
+
+        except Exception:
+            self.fn_logger.exception("Unexpected error during download of {}", description)
+            if filepath.exists():
+                filepath.unlink()
+            return None
+
+        else:
+            return filepath
 
     def _merge_dash_segments(self, segment_files: list[Path], output_file: Path) -> None:
         """Merge DASH segments into a single file."""

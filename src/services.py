@@ -72,18 +72,36 @@ class TrackService:
         return safe_name
 
     def get_stream_info(self, track: Track, client: TidlClient) -> StreamInfo:
-        """Get stream information for a track."""
-        # Try qualities from highest to lowest
-        qualities = [Quality.hi_res_lossless, Quality.high_lossless, Quality.low_320k, Quality.low_96k]
-        for quality in qualities:
+        """Get stream information for a track.
+
+        Optimized to try the track's reported quality first, then fallback to trying
+        all qualities from highest to lowest if the reported quality fails.
+        """
+        # Get the track's reported quality
+        reported_quality = track.audio_quality
+
+        # All possible qualities from highest to lowest
+        all_qualities = [Quality.hi_res_lossless, Quality.high_lossless, Quality.low_320k, Quality.low_96k]
+
+        # Reorder to prioritize reported quality first
+        if reported_quality in all_qualities:
+            all_qualities.remove(reported_quality)
+            all_qualities.insert(0, reported_quality)
+            logger.debug("Prioritizing reported quality {} for track: {}", reported_quality, track.name)
+
+        # Try each quality in order
+        for quality in all_qualities:
             try:
                 client.session.audio_quality = quality
                 stream_info = StreamInfo.from_track(track)
             except StreamInfoError:
+                logger.debug("Quality {} failed for track: {}, trying next quality", quality, track.name)
                 continue
             else:
                 logger.info("Track {} obtained in quality: {}", track.name, quality)
                 return stream_info
+
+        # All qualities failed
         msg = f"Failed to get stream info for track: {track.name} in any quality"
         logger.exception(msg)
         raise StreamInfoError(msg)
