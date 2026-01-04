@@ -14,7 +14,8 @@ dependencies = [
   "m3u8",
   "mutagen",
   "python-ffmpeg",
-  "tidalapi",
+  # "tidalapi==0.8.6",  # previous version
+  "tidalapi==0.8.10",
   "loguru",
   "tqdm",
   "pycryptodome",

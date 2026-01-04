@@ -35,12 +35,12 @@ class TrackMetaData:
     # genre: str = ""
 
     # Musical data
-    # bpm: int = 0
-    # key: str = ""
-    # key_scale: str = ""
+    bpm: int = 0
+    key: str = ""
+    key_scale: str = ""
 
     # Additional info
-    # version: str = ""
+    # version: str | None = None
 
     # Audio quality metadata
     # album_replay_gain: float = 1.0
@@ -53,6 +53,10 @@ class TrackMetaData:
     cover: bytes = b""
     # m: mutagen.mp4.MP4 | mutagen.flac.FLAC
     # media_tags: list[str]
+
+    # Performance metadata flags
+    # stem_ready: bool = False
+    # dj_ready: bool = False
 
     @property
     def full_title(self) -> str:
@@ -87,6 +91,11 @@ class TrackMetaData:
             # Description
             # Genre
             # Initialkey
+            bpm=track.bpm if track.bpm else 0,
+            key=track.key if track.key else "",
+            key_scale=track.key_scale if track.key_scale else "",
+            # peak=track.peak if track.peak else 0.0,
+            # replay_gain=track.replay_gain if track.replay_gain else 1.0,
         )
 
     @classmethod
@@ -153,26 +162,33 @@ class MetadataWriter:
         file_ext = self.path_file.suffix.lower()
 
         try:
-            # Special handling for .flac files that might be MP4 containers
-            if file_ext == ".flac":
-                # Check file header to determine actual format
-                with Path(self.path_file).open("rb") as f:
-                    header = f.read(16)
-                    if b"ftyp" in header:
-                        # This is an MP4 file with .flac extension (TIDAL DASH)
-                        logger.debug("Detected MP4 container with .flac extension")
-                        return mutagen.mp4.MP4(str(self.path_file))
-                    if header.startswith(b"fLaC"):
-                        # This is a real FLAC file
-                        logger.debug("Detected actual FLAC file")
-                        return mutagen.flac.FLAC(str(self.path_file))
-                    # Try generic FLAC loading
-                    logger.debug("Attempting FLAC loading for .flac file")
-                    return mutagen.flac.FLAC(str(self.path_file))
-            else:
-                # For non-.flac files, use standard mutagen detection
-                logger.debug("Using standard mutagen detection for {}", file_ext)
-                return mutagen.File(str(self.path_file))
+            # Check file header to determine actual format for common extensions
+            with Path(self.path_file).open("rb") as f:
+                header = f.read(16)
+
+            # Check if MP4 container (ftyp signature)
+            if b"ftyp" in header:
+                # This is an MP4 file with .flac extension (DASH)
+                logger.debug("Detected MP4 container (file ext: {})", file_ext)
+                return mutagen.mp4.MP4(str(self.path_file))
+
+            # Check if FLAC file
+            if header.startswith(b"fLaC"):
+                # This is a real FLAC file
+                logger.debug("Detected FLAC file (file ext: {})", file_ext)
+                return mutagen.flac.FLAC(str(self.path_file))
+
+            # TODO: Check for AAC in MP4 container...
+
+            # Check if MP3 file (ID3 tag or MPEG frame sync)
+            if header.startswith((b"ID3", b"\xff\xfb", b"\xff\xf3")):
+                logger.debug("Detected MP3 file (file ext: {})", file_ext)
+                # return mutagen.mp3.MP3(str(self.path_file))
+                return ID3(str(self.path_file))
+
+            # Fall back to standard mutagen detection for other formats
+            logger.debug("Using standard mutagen detection for {} (header: {})", file_ext, header[:8].hex())
+            return mutagen.File(str(self.path_file))
 
         except Exception as e:
             logger.error("Failed to load file {}: {}", self.path_file, e)
@@ -225,6 +241,11 @@ class MetadataWriter:
         self.m.tags["YEAR"] = str(track_metadata.year)
         if track_metadata.isrc:
             self.m.tags["ISRC"] = track_metadata.isrc
+        if track_metadata.bpm:
+            self.m.tags["BPM"] = str(track_metadata.bpm)
+
+        written_tags = "\n".join(f"{key}: {value}" for key, value in self.m.tags.items())
+        logger.debug("FLAC tags written successfully: \n{}", written_tags)
 
     def _write_mp4_tags(self, track_metadata: TrackMetaData) -> None:
         """Write MP4 tags."""
@@ -239,11 +260,13 @@ class MetadataWriter:
             self.m.tags["\xa9ART"] = [track_metadata.artists]
             self.m.tags["\xa9day"] = [track_metadata.date]
             self.m.tags["\xa9yr"] = [str(track_metadata.year)]
-
             if track_metadata.isrc:
                 self.m.tags["isrc"] = [track_metadata.isrc]
+            if track_metadata.bpm:
+                self.m.tags["tmpo"] = [track_metadata.bpm]
 
-            logger.debug("MP4 tags written successfully")
+            written_tags = "\n".join(f"{key}: {value}" for key, value in self.m.tags.items())
+            logger.debug("MP4 tags written successfully: \n{}", written_tags)
 
         except Exception as e:
             logger.error("Error writing MP4 tags: {}", str(e))

@@ -290,6 +290,12 @@ wheels = [
 ]
 
 [[package]]
+name = "pyaes"
+version = "1.6.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/44/66/2c17bae31c906613795711fc78045c285048168919ace2220daa372c7d72/pyaes-1.6.1.tar.gz", hash = "sha256:02c1b1405c38d3c370b085fb952dd8bea3fadcee6411ad99f312cc129c536d8f", size = 28536, upload-time = "2017-09-20T21:17:54.23Z" }
+
+[[package]]
 name = "pycryptodome"
 version = "3.23.0"
 source = { registry = "https://pypi.org/simple" }
@@ -515,19 +521,20 @@ wheels = [
 
 [[package]]
 name = "tidalapi"
-version = "0.8.6"
+version = "0.8.10"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "isodate" },
     { name = "mpegdash" },
+    { name = "pyaes" },
     { name = "python-dateutil" },
     { name = "ratelimit" },
     { name = "requests" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/b9/f8/3adec91da02ff3379ee246a7dac1b2603cd64d0f291c8a67f544ac62455e/tidalapi-0.8.6.tar.gz", hash = "sha256:23315c717d56f08436638d217d73e710ff5ce414292b0668ae8cbfeefab92323", size = 56269, upload-time = "2025-08-19T16:59:15.367Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b0/6c/9f85b315507083eb6990bb1e2d46d9e5adcdb2a88aa1878aff637d75ff3a/tidalapi-0.8.10.tar.gz", hash = "sha256:f5b7d6ab19cfd40907941200a91d491f16d1b68b0323af9b0660bb739e0aab80", size = 58284, upload-time = "2025-12-17T17:04:47.814Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/fb/03/b0702b54f6eb34e8016ef0e6cde1bfde2f72a7bacd95dec196f033a7f784/tidalapi-0.8.6-py3-none-any.whl", hash = "sha256:a55f54ff4110398cd3a565b6cfc8bcbf8e104442e06db0eab8372abcd653a3d6", size = 62893, upload-time = "2025-08-19T16:59:13.82Z" },
+    { url = "https://files.pythonhosted.org/packages/23/49/1b67531d5c60027636c373831ed681e886408282dd4c693d462c100be7de/tidalapi-0.8.10-py3-none-any.whl", hash = "sha256:2f04f1a28a41a9e917c81607259a016a64232b61e0b9a5e388d3f16ce2817f78", size = 64232, upload-time = "2025-12-17T17:04:46.527Z" },
 ]
 
 [[package]]
@@ -575,7 +582,7 @@ requires-dist = [
     { name = "python-dotenv" },
     { name = "python-ffmpeg" },
     { name = "spotipy" },
-    { name = "tidalapi" },
+    { name = "tidalapi", specifier = "==0.8.10" },
     { name = "tqdm" },
 ]
 
