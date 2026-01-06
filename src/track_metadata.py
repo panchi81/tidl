@@ -8,8 +8,8 @@ import mutagen.mp3
 import mutagen.mp4
 from loguru import logger
 from mutagen.flac import Picture
-from mutagen.id3 import APIC, TALB, TDRC, TIT2, TLEN, TPE1, TSRC, TYER
-from mutagen.mp4 import MP4Cover
+from mutagen.id3 import APIC, ID3, TALB, TDRC, TIT2, TLEN, TPE1, TSRC, TYER
+from mutagen.mp4 import AtomDataType, MP4Cover, MP4FreeForm
 from tidalapi import Track
 from tidalapi.artist import Artist, Role
 
@@ -76,11 +76,11 @@ class TrackMetaData:
         cover_data = cls._download_cover_image(track)
 
         return cls(
-            title=track.name if track.name else "",
+            title=track.name or "",
             artists=cls._name_builder_artists(track),
             album=track.album.name if track.album and track.album.name else "",
-            isrc=track.isrc if track.isrc else "",
-            length=track.duration if track.duration else 0,
+            isrc=track.isrc or "",
+            length=track.duration or 0,
             date=track.album.available_release_date.strftime("%Y-%m-%d")
             if track.album and track.album.available_release_date
             else "",
@@ -91,9 +91,9 @@ class TrackMetaData:
             # Description
             # Genre
             # Initialkey
-            bpm=track.bpm if track.bpm else 0,
-            key=track.key if track.key else "",
-            key_scale=track.key_scale if track.key_scale else "",
+            bpm=track.bpm or 0,
+            key=track.key or "",
+            key_scale=track.key_scale or "",
             # peak=track.peak if track.peak else 0.0,
             # replay_gain=track.replay_gain if track.replay_gain else 1.0,
         )
@@ -250,18 +250,18 @@ class MetadataWriter:
     def _write_mp4_tags(self, track_metadata: TrackMetaData) -> None:
         """Write MP4 tags."""
         try:
-            # Ensure tags exist
-            if not self.m.tags:
-                self.m.add_tags()
-
             # Write basic metadata (MP4 tags expect lists)
             self.m.tags["\xa9nam"] = [track_metadata.title]
             self.m.tags["\xa9alb"] = [track_metadata.album]
-            self.m.tags["\xa9ART"] = [track_metadata.artists]
-            self.m.tags["\xa9day"] = [track_metadata.date]
-            self.m.tags["\xa9yr"] = [str(track_metadata.year)]
+            self.m.tags["\xa9art"] = [track_metadata.artists]
+            # self.m.tags["\xa9day"] = [track_metadata.date]
+            self.m.tags["\xa9day"] = [str(track_metadata.year)]
+
+            # ISRC must use iTunes freeform atom format
             if track_metadata.isrc:
-                self.m.tags["isrc"] = [track_metadata.isrc]
+                isrc_atom = MP4FreeForm(track_metadata.isrc.encode("utf-8"), dataformat=AtomDataType.UTF8)
+                self.m.tags["----:com.apple.iTunes:ISRC"] = [isrc_atom]
+
             if track_metadata.bpm:
                 self.m.tags["tmpo"] = [track_metadata.bpm]
 
