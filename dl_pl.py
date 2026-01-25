@@ -60,7 +60,7 @@ def main() -> None:
         skip_existing=True,
         batch_size=4,
         concurrent_downloads=2,
-        batch_delay=4,
+        batch_delay=6,
         api_delay=0.5,
     )
 
