@@ -230,3 +230,10 @@ __marimo__/
 
 # Project-specific data
 data/**
+
+# database files
+*.db*
+
+# Run-files
+dl_pl.py
+spoti.py
