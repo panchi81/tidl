@@ -42,6 +42,8 @@ lint.ignore = [
   "ERA001",  # commented-out code
   "D100",    # missing docstring in public module
   "D102",    # missing docstring in public method
+  "D203",  # incompatible with D211
+  "D213",  # incompatible with D212
   "D107",    # missing docstring in __init__
   "PLE1205", # Too many arguments for logging format string
 ]

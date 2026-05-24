@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
-from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
 from shutil import move
 from tempfile import TemporaryDirectory
+from typing import TYPE_CHECKING
 
 from loguru import logger
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
 
 
 class FileManager:
@@ -56,10 +59,6 @@ class FileManager:
         safe_name = "".join(c for c in track_name if c.isalnum() or c in ("-", "_"))[:50]
 
         with TemporaryDirectory(prefix=f"tidl_{safe_name}_") as temp_dir:
-            workspace = Path(temp_dir)
-            try:
-                yield workspace
-            except Exception:
-                logger.exception("Download workspace error")
-            finally:
-                logger.debug("Cleaning up download workspace")
+            workspace_path = Path(temp_dir)
+            yield workspace_path
+            logger.debug("Cleaning up download workspace")

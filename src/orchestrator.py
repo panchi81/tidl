@@ -5,13 +5,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
+from typing import TYPE_CHECKING, Self
 
 from httpx import Client, Limits
 from loguru import logger
+from mutagen import MutagenError
 from streamable import stream
 from tidalapi.media import AudioExtensions, Track
 
-from src.client import TidlClient
 from src.db import DownloadDB
 from src.downloader import DashStreamStrategy, StandardStreamStrategy
 from src.exceptions import StreamInfoError, TidlError
@@ -19,8 +20,11 @@ from src.file_manager import FileManager
 from src.metadata.base import MetadataWriter
 from src.postprocessor import PostProcessor
 from src.services import PlaylistService, TrackService
-from src.stream_info import StreamInfo
 from src.track_metadata import TrackMetaData
+
+if TYPE_CHECKING:
+    from src.client import TidlClient
+    from src.stream_info import StreamInfo
 
 
 @dataclass
@@ -89,7 +93,13 @@ class DownloadOrchestrator:
         playlist_name, tracks = self._resolve_playlist(playlist_id)
         self.file_manager.download_dir = self.config.download_dir / playlist_name
 
-        logger.info("Downloading {} tracks from '{}' ({} req/s, {} concurrent)", len(tracks), playlist_name, self.config.requests_per_second, self.config.concurrent_downloads)
+        logger.info(
+            "Downloading {} tracks from '{}' ({} req/s, {} concurrent)",
+            len(tracks),
+            playlist_name,
+            self.config.requests_per_second,
+            self.config.concurrent_downloads,
+        )
 
         results: list[TrackResult] = list(
             stream(tracks)
@@ -115,7 +125,9 @@ class DownloadOrchestrator:
         """Process a single track: validate, check cache/DB, download, post-process, finalize."""
         # Validate
         if not track.available or track.duration <= 0:
-            return TrackResult(track_name=track.full_name, success=False, reason="Track unavailable or zero duration")
+            return TrackResult(
+                track_name=track.full_name, success=False, reason="Track unavailable or zero duration",
+            )
 
         # Get stream info
         try:
@@ -137,7 +149,11 @@ class DownloadOrchestrator:
             self._maybe_record_existing(track, final_path, stream_info)
             return TrackResult(track_name=track.full_name, success=True, skipped=True, reason="File exists on disk")
 
-        # Download
+        # Download, post-process, finalize
+        return self._download_and_finalize(track, stream_info, final_path)
+
+    def _download_and_finalize(self, track: Track, stream_info: StreamInfo, final_path: Path) -> TrackResult:
+        """Download, post-process, write metadata, and record in DB."""
         try:
             with FileManager.workspace(track.name) as workspace:
                 downloaded_file = self._download(stream_info, track, workspace)
@@ -161,9 +177,9 @@ class DownloadOrchestrator:
 
                 return TrackResult(track_name=track.full_name, success=True)
 
-        except FileNotFoundError as e:
+        except (FileNotFoundError, OSError) as e:
             return TrackResult(track_name=track.full_name, success=False, reason=str(e))
-        except Exception:
+        except (StreamInfoError, TidlError):
             logger.exception("Failed to download track: {}", track.full_name)
             return TrackResult(track_name=track.full_name, success=False, reason="Unexpected error")
 
@@ -187,7 +203,12 @@ class DownloadOrchestrator:
 
         new_quality = stream_info.quality.name
         if not self.db.should_upgrade_quality(track, new_quality):
-            return TrackResult(track_name=track.full_name, success=True, skipped=True, reason="Already in DB at same/better quality")
+            return TrackResult(
+                track_name=track.full_name,
+                success=True,
+                skipped=True,
+                reason="Already in DB at same/better quality",
+            )
 
         existing = self.db.get_best_quality_downloaded(track)
         logger.info("Quality upgrade available for {}: {} -> {}", track.full_name, existing, new_quality)
@@ -206,7 +227,7 @@ class DownloadOrchestrator:
                 quality=stream_info.quality.name,
                 has_metadata=True,
             )
-        except Exception:
+        except OSError:
             logger.exception("Failed to add existing file to DB: {}", track.full_name)
 
     def _record_download(self, track: Track, file_path: Path, stream_info: StreamInfo) -> None:
@@ -222,7 +243,7 @@ class DownloadOrchestrator:
                 quality=stream_info.quality.name,
                 has_metadata=True,
             )
-        except Exception:
+        except OSError:
             logger.exception("Failed to record download in DB: {}", track.full_name)
 
     def _write_metadata(self, file_path: Path, track: Track) -> None:
@@ -232,15 +253,17 @@ class DownloadOrchestrator:
             writer = MetadataWriter(file_path)
             writer.write(metadata)
             logger.debug("Metadata written to: {}", file_path.name)
-        except Exception:
+        except (MutagenError, OSError):
             logger.exception("Failed to write metadata to {}", file_path.name)
 
     def close(self) -> None:
         """Clean up resources."""
         self.http_client.close()
 
-    def __enter__(self) -> DownloadOrchestrator:
+    def __enter__(self) -> Self:
+        """Enter the context manager."""
         return self
 
     def __exit__(self, *_: object) -> None:
+        """Exit the context manager and clean up resources."""
         self.close()

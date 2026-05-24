@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
-import mutagen
-import mutagen.flac
+from typing import TYPE_CHECKING
+
 from loguru import logger
 from mutagen.flac import Picture
 
-from src.track_metadata import TrackMetaData
+if TYPE_CHECKING:
+    import mutagen.flac
+
+    from src.track_metadata import TrackMetaData
 
 
 class FlacWriter:
@@ -31,21 +34,18 @@ class FlacWriter:
 
     def add_cover(self, m: mutagen.flac.FLAC, image_data: bytes) -> None:
         """Add cover image to FLAC file as a Picture block."""
-        try:
-            mime_type = _detect_image_mime_type(image_data)
-            picture = Picture()
-            picture.data = image_data
-            picture.type = 3  # Cover (front)
-            picture.mime = mime_type
-            picture.width = 0
-            picture.height = 0
-            picture.depth = 0
-            picture.colors = 0
-            picture.desc = "Cover"
-            m.add_picture(picture)
-            logger.debug("Added cover image to FLAC file: {} bytes", len(image_data))
-        except Exception as e:
-            logger.warning("Failed to add cover to FLAC file: {}", str(e))
+        mime_type = _detect_image_mime_type(image_data)
+        picture = Picture()
+        picture.data = image_data
+        picture.type = 3  # Cover (front)
+        picture.mime = mime_type
+        picture.width = 0
+        picture.height = 0
+        picture.depth = 0
+        picture.colors = 0
+        picture.desc = "Cover"
+        m.add_picture(picture)
+        logger.debug("Added cover image to FLAC file: {} bytes", len(image_data))
 
 
 def _detect_image_mime_type(image_data: bytes) -> str:

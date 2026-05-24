@@ -6,13 +6,15 @@ enabling testability and loose coupling between components.
 
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
-from tidalapi.media import Track
+if TYPE_CHECKING:
+    from pathlib import Path
 
-from src.stream_info import StreamInfo
-from src.track_metadata import TrackMetaData
+    from tidalapi.media import Track
+
+    from src.stream_info import StreamInfo
+    from src.track_metadata import TrackMetaData
 
 
 class DownloadTracker(Protocol):
@@ -36,6 +38,7 @@ class DownloadTracker(Protocol):
         file_path: str,
         file_size: int | None = None,
         quality: str = "",
+        *,
         has_metadata: bool = False,
     ) -> None:
         """Record that a track has been downloaded."""

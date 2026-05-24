@@ -2,16 +2,23 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 import mutagen
 import mutagen.flac
+import mutagen.id3
 import mutagen.mp3
 import mutagen.mp4
 from loguru import logger
 
-from src.track_metadata import TrackMetaData
+from src.metadata.flac import FlacWriter
+from src.metadata.mp3 import Mp3Writer
+from src.metadata.mp4 import Mp4Writer
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from src.track_metadata import TrackMetaData
 
 
 class FormatWriter(Protocol):
@@ -59,19 +66,15 @@ class MetadataWriter:
                 writer.add_cover(self.m, metadata.cover)
 
             self.m.save()
+        except mutagen.MutagenError as e:
+            logger.error("Failed to write metadata to {}: {}", self.path_file.name, e)
+            return False
+        else:
             logger.debug("Successfully wrote metadata to: {}", self.path_file.name)
             return True
 
-        except Exception as e:
-            logger.error("Failed to write metadata to {}: {}", self.path_file.name, e)
-            return False
-
     def _get_format_writer(self) -> FormatWriter | None:
         """Select the appropriate format writer based on detected file type."""
-        from src.metadata.flac import FlacWriter
-        from src.metadata.mp3 import Mp3Writer
-        from src.metadata.mp4 import Mp4Writer
-
         if isinstance(self.m, mutagen.flac.FLAC):
             return FlacWriter()
         if isinstance(self.m, mutagen.mp4.MP4):
@@ -103,6 +106,6 @@ class MetadataWriter:
             logger.debug("Using standard mutagen detection for {} (header: {})", file_ext, header[:8].hex())
             return mutagen.File(str(self.path_file))
 
-        except Exception as e:
+        except (OSError, mutagen.MutagenError) as e:
             logger.error("Failed to load file {}: {}", self.path_file, e)
             return None

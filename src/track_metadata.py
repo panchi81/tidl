@@ -9,7 +9,6 @@ from loguru import logger
 from tidalapi import Track
 from tidalapi.artist import Artist, Role
 
-
 MAX_COVER_IMAGE_SIZE = 3000
 
 
@@ -82,8 +81,11 @@ class TrackMetaData:
                         logger.debug("Downloaded cover image: {} bytes ({}px)", len(image_data), quality)
                         return image_data
                     logger.warning("Invalid image content type: {}", response.headers.get("content-type"))
-            except Exception as e:
-                logger.warning("Error downloading cover at {} quality: {}", quality, str(e))
+            except httpx.HTTPError:
+                logger.warning("HTTP error downloading cover at {} quality", quality)
+                continue
+            except OSError:
+                logger.warning("OS error downloading cover at {} quality", quality)
                 continue
 
         logger.warning("Failed to download cover image for track: {}", track.name)

@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from httpx import Client, HTTPError
 from loguru import logger
 from streamable import stream
 from tidalapi.media import AudioExtensions, Track
 
-from src.postprocessor import PostProcessor
-from src.stream_info import StreamInfo
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from src.postprocessor import PostProcessor
+    from src.stream_info import StreamInfo
 
 
 class StandardStreamStrategy:
@@ -37,7 +40,7 @@ class StandardStreamStrategy:
             if filepath.exists():
                 filepath.unlink()
             return None
-        except Exception:
+        except OSError:
             logger.exception("Unexpected error during download of {}", description)
             if filepath.exists():
                 filepath.unlink()
@@ -64,8 +67,9 @@ class DashStreamStrategy:
 
         # Download segments concurrently via streamable
         downloaded = list(
-            stream(segment_targets)
-            .map(lambda t: self._download_segment(t[0], t[1], track.name), concurrency=self.segment_concurrency)
+            stream(segment_targets).map(
+                lambda t: self._download_segment(t[0], t[1], track.name), concurrency=self.segment_concurrency
+            )
         )
 
         # Filter out failed segments
@@ -113,7 +117,7 @@ class DashStreamStrategy:
             if filepath.exists():
                 filepath.unlink()
             return None
-        except Exception:
+        except OSError:
             logger.exception("Unexpected error downloading segment for {}", description)
             if filepath.exists():
                 filepath.unlink()

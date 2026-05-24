@@ -6,7 +6,6 @@ from sys import exit as sys_exit
 
 from dotenv import load_dotenv
 from loguru import logger
-
 from src.auth import Authenticator
 from src.client import TidlClient
 from src.orchestrator import DownloadConfig, DownloadOrchestrator, TrackResult
@@ -53,7 +52,10 @@ def _display_results(results: list[TrackResult]) -> None:
     skipped = sum(1 for r in results if r.skipped)
     failed = sum(1 for r in results if not r.success)
 
-    logger.info("Download Summary: {} total, {} successful, {} skipped, {} failed", len(results), successful, skipped, failed)
+    logger.info(
+        "Download Summary: {} total, {} successful, {} skipped, {} failed",
+        len(results), successful, skipped, failed,
+    )
 
     if failed > 0:
         for r in results:
