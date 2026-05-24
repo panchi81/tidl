@@ -237,3 +237,6 @@ data/**
 # Run-files
 dl_pl.py
 spoti.py
+
+# Agent files
+AGENT.md
