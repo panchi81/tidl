@@ -1,13 +1,15 @@
-from collections.abc import Iterator
+"""TIDAL client — session management and quality negotiation."""
+
+from __future__ import annotations
+
 from typing import ClassVar
 
 import requests
 from loguru import logger
 from tidalapi import Quality, Session, Track
 
-from src.exceptions import AuthError, PlaylistError, StreamInfoError
+from src.exceptions import StreamInfoError
 from src.setup_logging import setup_logging
-from src.track_metadata import TrackMetaData
 
 setup_logging()
 
@@ -25,7 +27,7 @@ class SingletonMeta(type):
 
 
 class TidlSession(Session):
-    """A simple extension of tidalapi.Session to add custom functionality."""
+    """Extension of tidalapi.Session with utility methods."""
 
     def __init__(self) -> None:
         super().__init__()
@@ -37,100 +39,18 @@ class TidlSession(Session):
 
 
 class TidlClient(metaclass=SingletonMeta):
-    """A simple TIDL API client."""
+    """TIDAL API client — holds session and provides quality negotiation."""
 
     def __init__(self) -> None:
         self.session = TidlSession()
-        self._authenticated = False
         logger.debug("Client instance created.")
 
-    def authenticate_oauth(self) -> bool:
-        """Authenticate the session using OAuth."""
-        try:
-            logger.debug("Starting OAuth authentication...")
-            login_result = self.session.login_oauth_simple()
-            logger.debug("OAuth authentication result: {}", login_result)
-        except (requests.RequestException, ValueError, OSError) as e:
-            logger.error("Authentication error: {}", e)
-            return False
-        else:
-            try:
-                user_check = self.session.check_login()
-            except (requests.RequestException, ValueError, OSError) as e:
-                logger.error("Session verification failed: {}", e)
-                return False
-            else:
-                if not user_check:
-                    logger.error("User check failed: {}", user_check)
-                    return False
-
-                logger.debug("Session login check result: {}", user_check)
-                self._authenticated = True
-                # Set highest quality with fallback for lossless downloads
-                self._set_highest_available_quality()
-                logger.info("Authentication successful.")
-                return True
-
-    def authenticate_pkce(self) -> bool:
-        """Authenticate the session using PKCE method for HiRes/lossless access."""
-        try:
-            logger.debug("Starting PKCE authentication for HiRes access...")
-            self.session.login_pkce()
-            logger.debug("PKCE authentication completed")
-        except (requests.RequestException, ValueError, OSError) as e:
-            logger.error("PKCE authentication error: {}", e)
-            return False
-        else:
-            try:
-                user_check = self.session.check_login()
-            except (requests.RequestException, ValueError, OSError) as e:
-                logger.error("Session verification failed: {}", e)
-                return False
-            else:
-                if not user_check:
-                    logger.error("User check failed: {}", user_check)
-                    return False
-
-                logger.debug("Session login check result: {}", user_check)
-                self._authenticated = True
-                # Set highest quality with fallback for lossless downloads
-                self._set_highest_available_quality()
-                logger.info("PKCE authentication successful - HiRes access enabled.")
-                return True
-
-    def _set_highest_available_quality(self) -> None:
-        """Set the highest available audio quality.
-
-        Attempts qualities in order from highest to lowest:
-        1. HI_RES_LOSSLESS (24-bit up to 192kHz FLAC)
-        2. LOSSLESS (16-bit 44.1kHz FLAC)
-        3. HIGH (320kbps AAC)
-        4. LOW (96kbps AAC)
-        """
-        quality_preferences = [Quality.hi_res_lossless, Quality.high_lossless, Quality.low_320k, Quality.low_96k]
-
-        for quality in quality_preferences:
-            try:
-                self.session.audio_quality = quality
-            except (AttributeError, ValueError):
-                logger.debug("Quality {} not available", quality.name)
-                continue
-            else:
-                logger.debug("Session quality set to: {}", quality.name)
-                return
-
-        # Fallback to default if all fail
-        self.session.audio_quality = Quality.low_320k
-        logger.warning("Using fallback quality: {}", Quality.low_320k.name)
-
     def get_track_with_quality(self, track: Track) -> tuple[Track, Quality]:
-        """Get track stream with quality.
+        """Get track stream at highest available quality.
 
-        Tries to get the highest quality stream available for the specific track.
-        Returns the track and the actual quality obtained.
+        Tries qualities from highest to lowest, returning the track and actual quality obtained.
         """
         quality_preferences = [Quality.hi_res_lossless, Quality.high_lossless, Quality.low_320k, Quality.low_96k]
-
         original_quality = self.session.audio_quality
 
         for quality in quality_preferences:
@@ -144,78 +64,6 @@ class TidlClient(metaclass=SingletonMeta):
                 logger.debug("Track {} not available in {}", track.name, quality.name)
                 continue
 
-        # Restore original quality setting
         self.session.audio_quality = original_quality
-
-        # If no quality worked, raise an exception
         msg = f"Track {track.name} not available in any quality"
         raise StreamInfoError(msg)
-
-    def is_authenticated(self) -> bool:
-        """Check if the session is authenticated."""
-        auth_flag = getattr(self, "_authenticated", False)
-        try:
-            session_check = self.session.check_login()
-        except (requests.RequestException, ValueError, OSError) as e:
-            logger.error("Session check failed: {}", e)
-            return False
-        else:
-            logger.debug("Auth flag: {}, Session check: {}", auth_flag, session_check)
-            return auth_flag and session_check
-
-    def get_playlist_tracks(self, playlist_id: str) -> list[Track]:
-        """Get tracks from a playlist by its ID."""
-        if not self.is_authenticated():
-            logger.error("Cannot fetch playlist tracks: not authenticated.")
-            msg = "Not authenticated"
-            raise AuthError(msg)
-
-        try:
-            playlist = self.session.playlist(playlist_id)
-        except (requests.RequestException, ValueError, KeyError, AttributeError) as e:
-            logger.error("Error fetching playlist tracks: {}", e)
-            msg = f"Failed to fetch playlist tracks: {e}"  # Fixed formatting
-            raise PlaylistError(msg) from e
-        else:
-            tracks = playlist.tracks()
-            playlist_name = playlist.name
-            logger.info("Fetched {} tracks from playlist {}", len(tracks), playlist_name)
-            return tracks
-
-    def get_playlist_tracks_detailed(self, playlist_id: str) -> list[TrackMetaData]:
-        """Fetch detailed track metadata for all tracks in a playlist."""
-        if not self.is_authenticated():
-            logger.error("Cannot fetch playlist tracks: not authenticated.")
-            msg = "Not authenticated"
-            raise AuthError(msg)
-
-        try:
-            playlist = self.session.playlist(playlist_id)
-        except (requests.RequestException, ValueError, KeyError, OSError, AttributeError) as e:
-            logger.error("Error fetching playlist {}: {}", playlist_id, e)
-            msg = f"Failed to fetch playlist: {e}"
-            raise PlaylistError(msg) from e
-        else:
-            tracks = playlist.tracks()
-            playlist_name = playlist.name
-            logger.info("Fetched playlist: {} with {} tracks", playlist_name, len(tracks))
-
-            return [TrackMetaData.from_track(track) for track in tracks]
-
-    def get_track_info(self, tracks: list[str]) -> Iterator[str]:
-        """Get track information for a list of track IDs."""
-        if not self.is_authenticated():
-            logger.error("Cannot fetch track info: not authenticated.")
-            msg = "Not authenticated"
-            raise AuthError(msg)
-
-        for track_id in tracks:
-            try:
-                track = self.session.track(track_id)
-            except (requests.RequestException, ValueError, KeyError, AttributeError) as e:
-                logger.error("Error fetching track info for ID {}: {}", track_id, e)
-                continue
-            else:
-                track_info = f"{track.artist.name} - {track.name}"
-                logger.info("Fetched track info: {}", track_info)
-                yield track_info
