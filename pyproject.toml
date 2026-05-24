@@ -2,73 +2,75 @@
 name = "tidl"
 version = "0.1.0"
 requires-python = ">=3.13"
-
 classifiers = [
   "Programming Language :: Python :: 3 :: Only",
   "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
 ]
-
 dependencies = [
   "httpx",
-  "mutagen",
-  "python-ffmpeg",
-  "tidalapi==0.8.11",
   "loguru",
+  "mutagen",
   "pycryptodome",
   "python-dotenv",
-  "streamable",
+  "python-ffmpeg",
+  "requests>=2.32.5",
+  "streamable>=2.0.0",
+  "tidalapi==0.8.11",
 ]
 
 [dependency-groups]
-dev = ["prek"]
+dev = [ "prek>=0.4.1" ]
+test = [ "pytest" ]
+lint = [ "deptry", "pyproject-fmt", "ruff", "ty" ]
 
-test = ["pytest"]
-
-lint = ["deptry", "pyproject-fmt", "ruff", "ty"]
+[tool.uv]
+default-groups = [ "dev", "lint", "test" ]
 
 [tool.ruff]
 line-length = 120
 indent-width = 4
-src = ["src", "tidl", "tests"]
+src = [ "src", "tests", "tidl" ]
+cache-dir = ".cache/.ruff_cache"
 format.indent-style = "space"
 format.quote-style = "double"
 format.line-ending = "lf"
 format.skip-magic-trailing-comma = true
-lint.select = ["ALL"]
+lint.select = [ "ALL" ]
 lint.ignore = [
   "ANN002",  # missing type annotation for *{name}
   "ANN003",  # missing type annotation for **{name}
   "COM812",  # magic trailing commas
-  "ERA001",  # commented-out code
   "D100",    # missing docstring in public module
   "D102",    # missing docstring in public method
-  "D203",  # incompatible with D211
-  "D213",  # incompatible with D212
   "D107",    # missing docstring in __init__
+  "D203",    # incompatible with D211
+  "D213",    # incompatible with D212
+  "ERA001",  # commented-out code
   "PLE1205", # Too many arguments for logging format string
 ]
 
 [tool.deptry]
-exclude = ["__pycache__", ".cache", ".env", ".git", ".github", ".venv", "docs"]
+exclude = [ "__pycache__", ".cache", ".env", ".git", ".github", ".venv", "docs", "tests" ]
 
-[tool.uv]
-default-groups = ["dev", "lint", "test"]
+[tool.pyproject-fmt]
+keep_full_version = true
 
-[tool.ty.rules]
-unused-ignore-comment = "warn"
-redundant-cast = "ignore"
-possibly-unbound-attribute = "error"
-possibly-unbound-import = "error"
+[tool.ty]
+rules.unused-ignore-comment = "warn"
+rules.redundant-cast = "ignore"
+rules.possibly-unbound-attribute = "error"
+rules.possibly-unbound-import = "error"
 
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-python_files = ["test_*.py", "*_test.py"]
-python_classes = ["Test*"]
-python_functions = ["test_*"]
-addopts = ["--strict-markers", "--strict-config", "--verbose", "-ra"]
-markers = [
+[tool.pytest]
+ini_options.testpaths = [ "tests" ]
+ini_options.python_files = [ "test_*.py", "*_test.py" ]
+ini_options.python_classes = [ "Test*" ]
+ini_options.python_functions = [ "test_*" ]
+ini_options.addopts = [ "--strict-markers", "--strict-config", "--verbose", "-ra" ]
+ini_options.markers = [
   "slow: marks tests as slow (deselect with '-m \"not slow\"')",
   "integration: marks tests as integration tests",
   "unit: marks tests as unit tests",
 ]
-filterwarnings = ["error", "ignore::UserWarning", "ignore::DeprecationWarning"]
+ini_options.filterwarnings = [ "error", "ignore::UserWarning", "ignore::DeprecationWarning" ]
