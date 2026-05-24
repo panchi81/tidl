@@ -9,18 +9,14 @@ classifiers = [
 ]
 
 dependencies = [
-  "dataclasses-json",
   "httpx",
-  "m3u8",
   "mutagen",
   "python-ffmpeg",
   "tidalapi==0.8.11",
   "loguru",
-  "tqdm",
   "pycryptodome",
   "python-dotenv",
-  "spotipy",
-  "aiofiles",
+  "streamable",
 ]
 
 [dependency-groups]
@@ -33,7 +29,7 @@ lint = ["deptry", "pyproject-fmt", "ruff", "ty"]
 [tool.ruff]
 line-length = 120
 indent-width = 4
-src = ["src", "tests"]
+src = ["src", "tidl", "tests"]
 format.indent-style = "space"
 format.quote-style = "double"
 format.line-ending = "lf"

@@ -38,5 +38,5 @@ class CoverImageError(TidlError):
     """Cover image related errors."""
 
 
-class DBError(Exception):
+class DBError(TidlError):
     """Database related errors."""
