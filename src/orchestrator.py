@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Self
 
 from httpx import Client, Limits
 from loguru import logger
-from mutagen import MutagenError
+from mutagen._util import MutagenError
 from streamable import stream
 from tidalapi.media import AudioExtensions, Track
 
@@ -125,9 +125,7 @@ class DownloadOrchestrator:
         """Process a single track: validate, check cache/DB, download, post-process, finalize."""
         # Validate
         if not track.available or track.duration <= 0:
-            return TrackResult(
-                track_name=track.full_name, success=False, reason="Track unavailable or zero duration",
-            )
+            return TrackResult(track_name=track.full_name, success=False, reason="Track unavailable or zero duration")
 
         # Get stream info
         try:
@@ -204,10 +202,7 @@ class DownloadOrchestrator:
         new_quality = stream_info.quality.name
         if not self.db.should_upgrade_quality(track, new_quality):
             return TrackResult(
-                track_name=track.full_name,
-                success=True,
-                skipped=True,
-                reason="Already in DB at same/better quality",
+                track_name=track.full_name, success=True, skipped=True, reason="Already in DB at same/better quality"
             )
 
         existing = self.db.get_best_quality_downloaded(track)

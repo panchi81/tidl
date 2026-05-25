@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import requests
 from loguru import logger
-from tidalapi import Quality
+from requests import RequestException
+from tidalapi.media import Quality
 
 if TYPE_CHECKING:
     from src.client import TidlSession
@@ -26,7 +26,7 @@ class Authenticator:
             return False
         try:
             return self.session.check_login()
-        except (requests.RequestException, ValueError, OSError) as e:
+        except (RequestException, ValueError, OSError) as e:
             logger.error("Session check failed: {}", e)
             return False
 
@@ -34,7 +34,7 @@ class Authenticator:
         """Authenticate using OAuth."""
         try:
             self.session.login_oauth_simple()
-        except (requests.RequestException, ValueError, OSError) as e:
+        except (RequestException, ValueError, OSError) as e:
             logger.error("OAuth authentication error: {}", e)
             return False
 
@@ -44,7 +44,7 @@ class Authenticator:
         """Authenticate using PKCE method for HiRes/lossless access."""
         try:
             self.session.login_pkce()
-        except (requests.RequestException, ValueError, OSError) as e:
+        except (RequestException, ValueError, OSError) as e:
             logger.error("PKCE authentication error: {}", e)
             return False
 
@@ -56,7 +56,7 @@ class Authenticator:
             if not self.session.check_login():
                 logger.error("Login verification failed")
                 return False
-        except (requests.RequestException, ValueError, OSError) as e:
+        except (RequestException, ValueError, OSError) as e:
             logger.error("Session verification failed: {}", e)
             return False
 
@@ -73,11 +73,11 @@ class Authenticator:
             try:
                 self.session.audio_quality = quality
             except (AttributeError, ValueError):
-                logger.debug("Quality {} not available", quality.name)
+                logger.debug("Quality {} not available", quality)
                 continue
             else:
-                logger.debug("Session quality set to: {}", quality.name)
+                logger.debug("Session quality set to: {}", quality)
                 return
 
         self.session.audio_quality = Quality.low_320k
-        logger.warning("Using fallback quality: {}", Quality.low_320k.name)
+        logger.warning("Using fallback quality: {}", Quality.low_320k)

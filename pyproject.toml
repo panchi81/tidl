@@ -30,7 +30,11 @@ default-groups = [ "dev", "lint", "test" ]
 [tool.ruff]
 line-length = 120
 indent-width = 4
+<<<<<<< HEAD
 src = [ "src", "tests", "tidl" ]
+=======
+src = ["src", "tidl", "tests"]
+>>>>>>> 5f0f879 (chore(fix): minor fixes, typecheck mostly)
 cache-dir = ".cache/.ruff_cache"
 format.indent-style = "space"
 format.quote-style = "double"
@@ -49,6 +53,9 @@ lint.ignore = [
   "ERA001",  # commented-out code
   "PLE1205", # Too many arguments for logging format string
 ]
+lint.flake8-quotes.inline-quotes = "double"
+lint.isort.combine-as-imports = true
+lint.isort.split-on-trailing-comma = false
 
 [tool.deptry]
 exclude = [ "__pycache__", ".cache", ".env", ".git", ".github", ".venv", "docs", "tests" ]
@@ -56,11 +63,22 @@ exclude = [ "__pycache__", ".cache", ".env", ".git", ".github", ".venv", "docs",
 [tool.pyproject-fmt]
 keep_full_version = true
 
+<<<<<<< HEAD
 [tool.ty]
 rules.unused-ignore-comment = "warn"
 rules.redundant-cast = "ignore"
 rules.possibly-unbound-attribute = "error"
 rules.possibly-unbound-import = "error"
+=======
+[tool.pyproject-fmt]
+keep_full_version = true
+
+[tool.ty.rules]
+unused-ignore-comment = "warn"
+redundant-cast = "ignore"
+possibly-unbound-attribute = "error"
+possibly-unbound-import = "error"
+>>>>>>> 5f0f879 (chore(fix): minor fixes, typecheck mostly)
 
 [tool.pytest]
 ini_options.testpaths = [ "tests" ]

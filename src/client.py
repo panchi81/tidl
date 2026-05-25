@@ -6,7 +6,8 @@ from typing import ClassVar
 
 import requests
 from loguru import logger
-from tidalapi import Quality, Session, Track
+from tidalapi.media import Quality, Track
+from tidalapi.session import Session
 
 from src.exceptions import StreamInfoError
 from src.setup_logging import setup_logging
@@ -58,10 +59,10 @@ class TidlClient(metaclass=SingletonMeta):
                 self.session.audio_quality = quality
                 stream = track.get_stream()
                 if stream:
-                    logger.debug("Track {} available in quality: {}", track.name, quality.name)
+                    logger.debug("Track {} available in quality: {}", track.name, quality)
                     return track, quality
             except (requests.RequestException, ValueError, OSError):
-                logger.debug("Track {} not available in {}", track.name, quality.name)
+                logger.debug("Track {} not available in {}", track.name, quality)
                 continue
 
         self.session.audio_quality = original_quality
