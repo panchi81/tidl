@@ -1,0 +1,16 @@
+[settings]
+python.uv_venv_auto = "source"
+idiomatic_version_file_enable_tools = ["python"]
+experimental = true
+
+[tools]
+ffmpeg = "latest"
+just = "latest"
+uv = "latest"
+
+[hooks]
+enter = "mise install --quiet"
+
+[[watch_files]]
+patterns = ["mise.toml"]
+run = "mise install --quiet && mise prune --tools --yes --quiet"
