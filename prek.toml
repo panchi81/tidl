@@ -1,6 +1,8 @@
 [auto_update]
 cooldown_days = 7
 
+exclude = "tests/"
+
 [[repos]]
 repo = "builtin"
 hooks = [

@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 from json import loads as json_loads
-from subprocess import SubprocessError, TimeoutExpired
-from subprocess import run as subprocess_run
+from subprocess import SubprocessError, TimeoutExpired, run as subprocess_run
 from typing import TYPE_CHECKING
 
 from ffmpeg import FFmpeg

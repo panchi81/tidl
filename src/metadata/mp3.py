@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from loguru import logger
-from mutagen.id3 import APIC, TALB, TDRC, TIT2, TLEN, TPE1, TSRC, TYER
+from mutagen.id3 import APIC, ID3, TALB, TDRC, TIT2, TLEN, TPE1, TSRC, TYER
 
 from src.metadata.flac import _detect_image_mime_type
 
@@ -21,7 +21,7 @@ class Mp3Writer:
 
     def write_tags(self, m: mutagen.id3.ID3 | mutagen.mp3.MP3, metadata: TrackMetaData) -> None:
         """Write ID3 frames to MP3 file."""
-        tags = m.tags if hasattr(m, "tags") and m.tags else m
+        tags = cast("ID3", m.tags if hasattr(m, "tags") and m.tags else m)
         tags.add(TIT2(encoding=3, text=metadata.title))
         tags.add(TALB(encoding=3, text=metadata.album))
         tags.add(TPE1(encoding=3, text=metadata.artists))
@@ -34,7 +34,7 @@ class Mp3Writer:
     def add_cover(self, m: mutagen.id3.ID3 | mutagen.mp3.MP3, image_data: bytes) -> None:
         """Add APIC frame (cover image) to MP3 file."""
         mime_type = _detect_image_mime_type(image_data)
-        tags = m.tags if hasattr(m, "tags") and m.tags else m
+        tags = cast("ID3", m.tags if hasattr(m, "tags") and m.tags else m)
         cover_frame = APIC(
             encoding=3,
             mime=mime_type,

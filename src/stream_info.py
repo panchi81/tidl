@@ -102,6 +102,6 @@ class StreamInfo:
         """Create StreamInfo from a Track object."""
         stream = track.get_stream()
         manifest = stream.get_stream_manifest()
-        stream.media_metadata_tags = getattr(track, "media_metadata_tags", [])
+        stream.media_metadata_tags = getattr(track, "media_metadata_tags", [])  # type: ignore[attr-defined]
 
         return cls(stream=stream, manifest=manifest)

@@ -31,6 +31,7 @@ default-groups = [ "dev", "lint", "test" ]
 line-length = 120
 indent-width = 4
 src = [ "src", "tests", "tidl" ]
+exclude = [ "tests/" ]
 cache-dir = ".cache/.ruff_cache"
 format.indent-style = "space"
 format.quote-style = "double"
@@ -60,6 +61,7 @@ exclude = [ "__pycache__", ".cache", ".env", ".git", ".github", ".venv", "docs",
 keep_full_version = true
 
 [tool.ty]
+src.exclude = [ "tests/" ]
 rules.unused-ignore-comment = "warn"
 rules.redundant-cast = "ignore"
 rules.possibly-unbound-attribute = "error"

@@ -83,7 +83,7 @@ class MetadataWriter:
             return Mp3Writer()
         return None
 
-    def _load_file(self) -> mutagen.FileType | None:
+    def _load_file(self) -> mutagen.FileType | mutagen.id3.ID3 | None:
         """Load file with format detection based on file header."""
         try:
             with self.path_file.open("rb") as f:

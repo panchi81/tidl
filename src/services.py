@@ -16,7 +16,8 @@ if TYPE_CHECKING:
     from src.client import TidlClient
 
 
-CHARACTER_TRANSLATION_TABLE = str.maketrans('"*/:<>?\\|', '＂＊／：＜＞？＼￨')  # noqa: Q000, RUF001
+CHARACTER_TRANSLATION_TABLE = str.maketrans('"*/:<>?\\|', "＂＊／：＜＞？＼￨")  # noqa: RUF001
+
 
 class PlaylistService:
     """Handle playlist operations."""
@@ -70,7 +71,8 @@ class TrackService:
     def get_track_safe_name(self, track: Track) -> str:
         """Generate a safe filename for a track."""
         character_translation_table = CHARACTER_TRANSLATION_TABLE
-        safe_name = f"{track.artist.name} - {track.name}".translate(character_translation_table)
+        artist_name = track.artist.name if track.artist else "Unknown Artist"
+        safe_name = f"{artist_name} - {track.name}".translate(character_translation_table)
         logger.debug("Generated safe filename: {}", safe_name)
         return safe_name
 

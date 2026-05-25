@@ -118,6 +118,9 @@ class DownloadOrchestrator:
         playlist_service = PlaylistService(self.client.session)
         playlist = playlist_service.get_playlist(playlist_id)
         tracks = playlist_service.get_playlist_tracks(playlist)
+        if not playlist.name:
+            msg = f"Playlist {playlist_id} has no name"
+            raise ValueError(msg)
         logger.info("Found playlist: '{}' with {} tracks", playlist.name, len(tracks))
         return playlist.name, tracks
 

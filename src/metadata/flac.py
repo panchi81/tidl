@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from loguru import logger
-from mutagen.flac import Picture
+from mutagen.flac import Picture, VCFLACDict
 
 if TYPE_CHECKING:
     import mutagen.flac
@@ -18,18 +18,21 @@ class FlacWriter:
 
     def write_tags(self, m: mutagen.flac.FLAC, metadata: TrackMetaData) -> None:
         """Write Vorbis comment tags to FLAC file."""
-        m.tags["TITLE"] = metadata.title
-        m.tags["ALBUM"] = metadata.album
-        m.tags["ARTIST"] = metadata.artists
-        m.tags["LENGTH"] = str(metadata.length)
-        m.tags["DATE"] = metadata.date
-        m.tags["YEAR"] = str(metadata.year)
+        if m.tags is None:
+            m.add_tags()
+        tags = cast("VCFLACDict", m.tags)
+        tags["TITLE"] = metadata.title
+        tags["ALBUM"] = metadata.album
+        tags["ARTIST"] = metadata.artists
+        tags["LENGTH"] = str(metadata.length)
+        tags["DATE"] = metadata.date
+        tags["YEAR"] = str(metadata.year)
         if metadata.isrc:
-            m.tags["ISRC"] = metadata.isrc
+            tags["ISRC"] = metadata.isrc
         if metadata.bpm:
-            m.tags["BPM"] = str(metadata.bpm)
+            tags["BPM"] = str(metadata.bpm)
 
-        written_tags = "\n".join(f"{key}: {value}" for key, value in m.tags.items())
+        written_tags = "\n".join(f"{key}: {value}" for key, value in tags.items())
         logger.debug("FLAC tags written successfully: \n{}", written_tags)
 
     def add_cover(self, m: mutagen.flac.FLAC, image_data: bytes) -> None:

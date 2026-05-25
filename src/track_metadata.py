@@ -94,11 +94,12 @@ class TrackMetaData:
     @classmethod
     def _name_builder_artists(cls, track: Track) -> str:
         """Format all artists for tags."""
-        return "; ".join(artist.name for artist in track.artists)
+        return "; ".join(artist.name for artist in (track.artists or []))
 
     @classmethod
     def _name_builder_album_artist(cls, track: Track) -> str:
         """Format main album artists."""
-        artists: list[Artist] = track.album.artists if isinstance(track, Track) else track.artists
+        album_artists = track.album.artists if track.album and isinstance(track, Track) else None
+        artists: list[Artist] = album_artists or (track.artists or [])
         artists_tmp = [artist.name for artist in artists if Role.main in artist.roles]
         return "; ".join(artists_tmp)
