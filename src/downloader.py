@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from time import sleep
 from typing import TYPE_CHECKING
 
-from httpx import Client, HTTPError
+from httpx import Client, HTTPError, TimeoutException
 from loguru import logger
 from streamable import stream
 from tidalapi.media import AudioExtensions, Track
@@ -52,10 +53,20 @@ class StandardStreamStrategy:
 class DashStreamStrategy:
     """Download DASH multi-segment streams with concurrent segment fetching."""
 
-    def __init__(self, http_client: Client, postprocessor: PostProcessor, *, segment_concurrency: int = 4) -> None:
+    def __init__(
+        self,
+        http_client: Client,
+        postprocessor: PostProcessor,
+        *,
+        segment_concurrency: int = 4,
+        max_retries: int = 3,
+        retry_base_delay: float = 2.0,
+    ) -> None:
         self.http_client = http_client
         self.postprocessor = postprocessor
         self.segment_concurrency = segment_concurrency
+        self.max_retries = max_retries
+        self.retry_base_delay = retry_base_delay
 
     def download(self, stream_info: StreamInfo, track: Track, workspace: Path) -> Path | None:
         """Download all DASH segments, decrypt if needed, and merge."""
@@ -64,18 +75,24 @@ class DashStreamStrategy:
 
         # Build segment file paths
         segment_targets = self._plan_segments(stream_info, segments_dir)
+        expected_count = len(segment_targets)
 
         # Download segments concurrently via streamable
         downloaded = list(
             stream(segment_targets).map(
-                lambda t: self._download_segment(t[0], t[1], track.name), concurrency=self.segment_concurrency
+                lambda t: self._download_segment_with_retry(t[0], t[1], track.name),
+                concurrency=self.segment_concurrency,
             )
         )
 
-        # Filter out failed segments
+        # Validate: ALL segments must succeed
         segment_files = [p for p in downloaded if p is not None]
-        if not segment_files:
-            logger.error("All DASH segments failed for {}", track.name)
+        failed_count = expected_count - len(segment_files)
+
+        if failed_count > 0:
+            logger.error(
+                "DASH download failed for {}: {}/{} segments missing", track.name, failed_count, expected_count
+            )
             return None
 
         # Decrypt if needed
@@ -105,6 +122,27 @@ class DashStreamStrategy:
             targets.append((url, segment_file))
         return targets
 
+    def _download_segment_with_retry(self, url: str, filepath: Path, description: str) -> Path | None:
+        """Download a segment with exponential backoff retry."""
+        for attempt in range(self.max_retries):
+            result = self._download_segment(url, filepath, description)
+            if result is not None:
+                return result
+
+            if attempt < self.max_retries - 1:
+                delay = self.retry_base_delay * (2**attempt)
+                logger.warning(
+                    "Retrying segment for {} (attempt {}/{}, backoff {:.1f}s)",
+                    description,
+                    attempt + 2,
+                    self.max_retries,
+                    delay,
+                )
+                sleep(delay)
+
+        logger.error("Segment download exhausted all retries for {}", description)
+        return None
+
     def _download_segment(self, url: str, filepath: Path, description: str) -> Path | None:
         """Download a single segment."""
         try:
@@ -112,7 +150,7 @@ class DashStreamStrategy:
             response.raise_for_status()
             with filepath.open("wb") as f:
                 f.write(response.content)
-        except HTTPError:
+        except (HTTPError, TimeoutException):
             logger.exception("Failed to download segment for {}", description)
             if filepath.exists():
                 filepath.unlink()

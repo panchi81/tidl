@@ -34,9 +34,20 @@ class DownloadConfig:
     download_dir: Path = Path("./downloads")
     skip_existing: bool = False
     skip_db: bool = False
-    concurrent_downloads: int = 5
+
+    # API rate limiting (TIDAL API — sensitive)
     requests_per_second: int = 4
-    api_delay: float = 0.5
+    concurrent_downloads: int = 2
+
+    # CDN downloads (not rate-sensitive, just resource management)
+    segment_concurrency: int = 4
+
+    # HTTP settings
+    http_timeout: float = 30.0
+
+    # Retry behavior (for CDN timeouts)
+    max_retries: int = 3
+    retry_base_delay: float = 2.0
 
 
 @dataclass
@@ -63,16 +74,22 @@ class DownloadOrchestrator:
 
         # HTTP client with connection pooling
         self.http_client = Client(
-            timeout=30.0,
+            timeout=self.config.http_timeout,
             limits=Limits(
-                max_connections=self.config.concurrent_downloads * 2,
+                max_connections=self.config.concurrent_downloads + self.config.segment_concurrency,
                 max_keepalive_connections=self.config.concurrent_downloads,
             ),
         )
 
         # Download strategies
         self.standard_strategy = StandardStreamStrategy(self.http_client)
-        self.dash_strategy = DashStreamStrategy(self.http_client, self.postprocessor)
+        self.dash_strategy = DashStreamStrategy(
+            self.http_client,
+            self.postprocessor,
+            segment_concurrency=self.config.segment_concurrency,
+            max_retries=self.config.max_retries,
+            retry_base_delay=self.config.retry_base_delay,
+        )
 
         # Database (optional)
         self.db: DownloadDB | None = None
@@ -106,11 +123,20 @@ class DownloadOrchestrator:
             .throttle(self.config.requests_per_second, per=timedelta(seconds=1))
             .map(self._process_track, concurrency=self.config.concurrent_downloads)
             .catch(TidlError, replace=lambda e: TrackResult(track_name="unknown", success=False, reason=str(e)))
-            .observe("downloading")
+            .observe(
+                "processing",
+                do=lambda obs: logger.info(
+                    "Processing: {} tracks, {} errors, elapsed {}", obs.elements, obs.errors, obs.elapsed
+                ),
+            )
         )
 
-        successful = sum(1 for r in results if r.success)
-        logger.info("Downloaded {}/{} tracks successfully", successful, len(results))
+        downloaded = sum(1 for r in results if r.success and not r.skipped)
+        skipped = sum(1 for r in results if r.skipped)
+        failed = sum(1 for r in results if not r.success)
+        logger.info(
+            "Summary: {} total, {} successful, {} skipped, {} failed", len(results), downloaded, skipped, failed
+        )
         return results
 
     def _resolve_playlist(self, playlist_id: str) -> tuple[str, list[Track]]:
@@ -140,6 +166,7 @@ class DownloadOrchestrator:
         if self.db and not self.config.skip_db:
             skip_result = self._check_db_skip(track, stream_info)
             if skip_result is not None:
+                logger.info("Skipping '{}' - already in DB", track.full_name)
                 return skip_result
 
         # Check if file exists on disk
@@ -148,6 +175,7 @@ class DownloadOrchestrator:
 
         if should_skip:
             self._maybe_record_existing(track, final_path, stream_info)
+            logger.info("Skipping '{}' - file exists in same or superior quality", track.full_name)
             return TrackResult(track_name=track.full_name, success=True, skipped=True, reason="File exists on disk")
 
         # Download, post-process, finalize
@@ -155,6 +183,7 @@ class DownloadOrchestrator:
 
     def _download_and_finalize(self, track: Track, stream_info: StreamInfo, final_path: Path) -> TrackResult:
         """Download, post-process, write metadata, and record in DB."""
+        logger.info("Downloading '{}' in quality: {}", track.full_name, stream_info.quality.name)
         try:
             with FileManager.workspace(track.name) as workspace:
                 downloaded_file = self._download(stream_info, track, workspace)

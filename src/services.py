@@ -103,7 +103,7 @@ class TrackService:
                 logger.debug("Quality {} failed for track: {}, trying next quality", quality, track.name)
                 continue
             else:
-                logger.info("Track {} obtained in quality: {}", track.name, quality)
+                logger.debug("Track {} resolved in quality: {}", track.name, quality)
                 return stream_info
 
         # All qualities failed

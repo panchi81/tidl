@@ -17,7 +17,7 @@ setup_logging()
 
 def main() -> None:
     """Download a TIDAL playlist."""
-    playlist_id = getenv("SALSITA")
+    playlist_id = getenv("AHORATEVAS")
     if not playlist_id:
         logger.error("No playlist ID provided. Set PLAYLIST_ID environment variable.")
         sys_exit(1)
@@ -48,12 +48,12 @@ def main() -> None:
 
 def _display_results(results: list[TrackResult]) -> None:
     """Display download summary."""
-    successful = sum(1 for r in results if r.success)
+    downloaded = sum(1 for r in results if r.success and not r.skipped)
     skipped = sum(1 for r in results if r.skipped)
     failed = sum(1 for r in results if not r.success)
 
     logger.info(
-        "Download Summary: {} total, {} successful, {} skipped, {} failed", len(results), successful, skipped, failed
+        "Download Summary: {} total, {} successful, {} skipped, {} failed", len(results), downloaded, skipped, failed
     )
 
     if failed > 0:
