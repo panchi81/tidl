@@ -8,6 +8,9 @@ ffmpeg = "latest"
 just = "latest"
 uv = "latest"
 
+[env]
+_.python.venv = ".venv"
+
 [hooks]
 enter = "mise install --quiet"
 
