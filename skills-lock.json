@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "skills": {
+    "smello": {
+      "source": "smelloscope/smello",
+      "sourceType": "github",
+      "skillPath": "skills/smello/SKILL.md",
+      "computedHash": "c1f57ab71ac90e7201e7c9b9ad654131e1b6f51727b3efd98653248f5f119b63"
+    },
+    "smello-setup": {
+      "source": "smelloscope/smello",
+      "sourceType": "github",
+      "skillPath": "skills/smello-setup/SKILL.md",
+      "computedHash": "c88d7ee310ebf400aaf8eec12e78c2bac620d83e7217a43cdb949612d4b2eb35"
+    }
+  }
+}
