@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
 
 from tidalapi.media import AudioExtensions, Codec, Quality, Stream, StreamManifest, Track
@@ -98,7 +100,7 @@ class StreamInfo:
         return self.stream.get_audio_resolution()
 
     @classmethod
-    def from_track(cls, track: Track) -> "StreamInfo":
+    def from_track(cls, track: Track) -> StreamInfo:
         """Create StreamInfo from a Track object."""
         stream = track.get_stream()
         manifest = stream.get_stream_manifest()

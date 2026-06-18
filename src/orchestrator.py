@@ -209,7 +209,7 @@ class DownloadOrchestrator:
 
         except (FileNotFoundError, OSError) as e:
             return TrackResult(track_name=track.full_name, success=False, reason=str(e))
-        except (StreamInfoError, TidlError):
+        except StreamInfoError, TidlError:
             logger.exception("Failed to download track: {}", track.full_name)
             return TrackResult(track_name=track.full_name, success=False, reason="Unexpected error")
 
@@ -280,7 +280,7 @@ class DownloadOrchestrator:
             writer = MetadataWriter(file_path)
             writer.write(metadata)
             logger.debug("Metadata written to: {}", file_path.name)
-        except (MutagenError, OSError):
+        except MutagenError, OSError:
             logger.exception("Failed to write metadata to {}", file_path.name)
 
     def close(self) -> None:

@@ -1,10 +1,9 @@
 [project]
 name = "tidl"
 version = "0.1.0"
-requires-python = ">=3.13"
+requires-python = ">=3.14"
 classifiers = [
   "Programming Language :: Python :: 3 :: Only",
-  "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
@@ -15,13 +14,18 @@ dependencies = [
   "python-dotenv",
   "python-ffmpeg",
   "requests>=2.32.5",
+  "smello>=0.14.1",
   "streamable>=2.0.0",
   "tidalapi==0.8.11",
+  "typer",
 ]
 
 [dependency-groups]
 dev = [ "prek>=0.4.1" ]
-test = [ "pytest" ]
+test = [
+  "pytest",
+  "smello-server>=0.8.3",
+]
 lint = [ "deptry", "pyproject-fmt", "ruff", "ty" ]
 
 [tool.uv]
@@ -48,6 +52,7 @@ lint.ignore = [
   "D203",    # incompatible with D211
   "D213",    # incompatible with D212
   "ERA001",  # commented-out code
+  "FBT002",  # boolean-default-value-positional-argument
   "PLE1205", # Too many arguments for logging format string
 ]
 lint.flake8-quotes.inline-quotes = "double"

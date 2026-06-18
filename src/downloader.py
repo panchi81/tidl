@@ -150,7 +150,7 @@ class DashStreamStrategy:
             response.raise_for_status()
             with filepath.open("wb") as f:
                 f.write(response.content)
-        except (HTTPError, TimeoutException):
+        except HTTPError, TimeoutException:
             logger.exception("Failed to download segment for {}", description)
             if filepath.exists():
                 filepath.unlink()
@@ -169,7 +169,7 @@ class DashStreamStrategy:
         def get_segment_id(path: Path) -> int:
             try:
                 return int(path.stem.split("_")[-1])
-            except (ValueError, IndexError):
+            except ValueError, IndexError:
                 return 0
 
         sorted_segments = sorted(segment_files, key=get_segment_id)

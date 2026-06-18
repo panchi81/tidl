@@ -61,7 +61,7 @@ class TidlClient(metaclass=SingletonMeta):
                 if stream:
                     logger.debug("Track {} available in quality: {}", track.name, quality)
                     return track, quality
-            except (requests.RequestException, ValueError, OSError):
+            except requests.RequestException, ValueError, OSError:
                 logger.debug("Track {} not available in {}", track.name, quality)
                 continue
 

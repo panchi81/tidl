@@ -72,7 +72,7 @@ class Authenticator:
         for quality in quality_preferences:
             try:
                 self.session.audio_quality = quality
-            except (AttributeError, ValueError):
+            except AttributeError, ValueError:
                 logger.debug("Quality {} not available", quality)
                 continue
             else:

@@ -1,10 +1,13 @@
 from base64 import b64decode
 from os import getenv
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from Crypto.Cipher import AES
 from Crypto.Util import Counter
 from dotenv import load_dotenv
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 load_dotenv()
 MASTER_KEY = getenv("MASTER_KEY")

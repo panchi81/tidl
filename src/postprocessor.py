@@ -101,7 +101,7 @@ class PostProcessor:
                 codec = info["streams"][0]["codec_name"] if info.get("streams") else ""
                 container = info["format"]["format_name"] if info.get("format") else ""
                 return codec.lower(), container.lower()
-        except (OSError, SubprocessError, TimeoutExpired):
+        except OSError, SubprocessError, TimeoutExpired:
             logger.exception("ffprobe failed for {}", file_path.name)
         return "", ""
 
