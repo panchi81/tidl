@@ -1,11 +1,11 @@
 [project]
 name = "tidl"
 version = "0.1.0"
-requires-python = ">=3.13"
+requires-python = ">=3.14"
 
 classifiers = [
   "Programming Language :: Python :: 3 :: Only",
-  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
 ]
 
 dependencies = [
@@ -21,12 +21,14 @@ dependencies = [
   "python-dotenv",
   "spotipy",
   "aiofiles",
+  "smello",
+  "typer"
 ]
 
 [dependency-groups]
 dev = ["prek"]
 
-test = ["pytest"]
+test = ["pytest", "smello-server"]
 
 lint = ["deptry", "pyproject-fmt", "ruff", "ty"]
 
